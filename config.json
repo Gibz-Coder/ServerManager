@@ -1,0 +1,22 @@
+{
+    "connection_profiles": [],
+    "active_profile_id": null,
+    "backup_settings": {
+        "mysqldump_path": "",
+        "backup_dir": "D:\\Project\\ServerManager\\backups",
+        "compress": true,
+        "schedule_enabled": false,
+        "schedule_type": "daily",
+        "schedule_time": "02:00",
+        "schedule_day": 1,
+        "run_headless": false
+    },
+    "retention_rules": [],
+    "retention_schedule": {
+        "schedule_enabled": false,
+        "schedule_type": "daily",
+        "schedule_time": "03:00",
+        "schedule_day": 1,
+        "run_headless": false
+    }
+}
