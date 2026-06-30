@@ -97,5 +97,41 @@ class TestServerManagerLogic(unittest.TestCase):
             self.assertIn("(1, 'John Doe')", written_data)
             self.assertIn("(2, 'Jane Smith')", written_data)
 
+    @patch('pymysql.connect')
+    @patch('os.makedirs')
+    @patch('os.path.exists')
+    @patch('os.remove')
+    @patch('shutil.copyfileobj')
+    @patch('gzip.open')
+    @patch('builtins.open')
+    def test_backup_compression_gzip(self, mock_file_open, mock_gzip_open, mock_copyfileobj, mock_remove, mock_exists, mock_makedirs, mock_connect):
+        """Test that compression utilizes gzip to output a .gz file and deletes the raw .sql file."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_cursor.fetchall.return_value = [{"Tables_in_sales_db": "customers"}]
+        mock_cursor.fetchone.return_value = {"Create Table": "CREATE TABLE `customers` (\n  `id` int(11) NOT NULL\n) ENGINE=InnoDB"}
+        mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+        
+        mock_ss_conn = MagicMock()
+        mock_ss_cursor = MagicMock()
+        mock_ss_cursor.fetchmany.side_effect = [[{"id": 1, "name": "John Doe"}], []]
+        mock_ss_conn.cursor.return_value.__enter__.return_value = mock_ss_cursor
+        
+        mock_connect.side_effect = [mock_conn, mock_ss_conn]
+        mock_exists.return_value = False # so it uses python dump
+        
+        manager = MySQLBackupManager(self.mock_profile, backup_dir="dummy_backups", connection_name="TestConnection", compress=True)
+        
+        # We mock open for the copy operation
+        mock_file_open.return_value.__enter__.return_value = MagicMock()
+        mock_gzip_open.return_value.__enter__.return_value = MagicMock()
+        
+        success, msg = manager.run_backup("sales_db")
+        
+        self.assertTrue(success)
+        mock_gzip_open.assert_called()
+        mock_copyfileobj.assert_called()
+        mock_remove.assert_called()
+
 if __name__ == '__main__':
     unittest.main()

@@ -152,18 +152,36 @@ class InAppSchedulerThread(threading.Thread):
         if b_sched.get("schedule_enabled") and not b_sched.get("run_headless"):
             if self.is_task_due("backup", b_sched, last_runs.get("backup"), now):
                 logger.info("Scheduled Backup is due. Launching execution...")
-                success, msg = run_backup_task(active_profile, b_sched)
-                if success:
-                    save_last_run("backup", now.strftime("%Y-%m-%d %H:%M:%S"))
+                save_last_run("backup", now.strftime("%Y-%m-%d %H:%M:%S"))
+                
+                def run_backup_async():
+                    try:
+                        success, msg = run_backup_task(active_profile, b_sched)
+                        if success:
+                            logger.info(f"Scheduled backup succeeded: {msg}")
+                        else:
+                            logger.error(f"Scheduled backup failed: {msg}")
+                    except Exception as e:
+                        logger.error(f"Error in background scheduled backup: {e}")
+                threading.Thread(target=run_backup_async, daemon=True).start()
                     
         # 2. Check Cleanup Schedule (only if run_headless is FALSE)
         c_sched = config.get("retention_schedule", {})
         if c_sched.get("schedule_enabled") and not c_sched.get("run_headless"):
             if self.is_task_due("cleanup", c_sched, last_runs.get("cleanup"), now):
                 logger.info("Scheduled Cleanup is due. Launching execution...")
-                success, msg = run_cleanup_task(active_profile, config.get("retention_rules", []))
-                if success:
-                    save_last_run("cleanup", now.strftime("%Y-%m-%d %H:%M:%S"))
+                save_last_run("cleanup", now.strftime("%Y-%m-%d %H:%M:%S"))
+                
+                def run_cleanup_async():
+                    try:
+                        success, msg = run_cleanup_task(active_profile, config.get("retention_rules", []))
+                        if success:
+                            logger.info(f"Scheduled cleanup succeeded: {msg}")
+                        else:
+                            logger.error(f"Scheduled cleanup failed: {msg}")
+                    except Exception as e:
+                        logger.error(f"Error in background scheduled cleanup: {e}")
+                threading.Thread(target=run_cleanup_async, daemon=True).start()
 
     def is_task_due(self, task_type: str, schedule: dict, last_run_str: str, now: datetime) -> bool:
         """Determines if a task should be run based on schedule type, time, and last execution date."""
@@ -216,22 +234,64 @@ class InAppSchedulerThread(threading.Thread):
 
 # Headless execution runners
 def run_backup_task(active_profile: dict, backup_settings: dict) -> tuple[bool, str]:
-    """Helper to run a full backup task for the configured database."""
-    db_name = active_profile.get("database")
-    if not db_name:
-        err = "Backup failed: No default database selected in active connection profile."
+    """Helper to run a backup task for multiple configured schemas."""
+    # Try to load schemas list from settings
+    schemas = backup_settings.get("schemas", [])
+    
+    # Fallback to profile default database if schemas list is empty
+    if not schemas:
+        db_name = active_profile.get("database")
+        if db_name:
+            schemas = [db_name]
+            
+    # Fallback to all databases if still empty
+    if not schemas:
+        try:
+            from src.connection import MySQLConnectionManager
+            mgr = MySQLConnectionManager(active_profile)
+            schemas = mgr.get_databases()
+        except Exception as e:
+            err = f"Backup failed: No database specified and could not fetch available schemas: {str(e)}"
+            logger.error(err)
+            return False, err
+            
+    if not schemas:
+        err = "Backup failed: No databases found to backup."
         logger.error(err)
         return False, err
         
     backup_mgr = MySQLBackupManager(
         profile=active_profile,
         backup_dir=backup_settings.get("backup_dir", os.path.join(WORKSPACE_DIR, "backups")),
+        connection_name=active_profile.get("name", "Default"),
         mysqldump_path=backup_settings.get("mysqldump_path", ""),
         compress=backup_settings.get("compress", True)
     )
     
-    success, msg = backup_mgr.run_backup(db_name)
-    return success, msg
+    success_schemas = []
+    failed_schemas = []
+    errors = []
+    
+    for schema in schemas:
+        try:
+            success, msg = backup_mgr.run_backup(schema)
+            if success:
+                success_schemas.append(schema)
+            else:
+                failed_schemas.append(schema)
+                errors.append(f"{schema}: {msg}")
+        except Exception as e:
+            failed_schemas.append(schema)
+            errors.append(f"{schema}: {str(e)}")
+            
+    summary = f"Backup process complete. Succeeded: {len(success_schemas)}/{len(schemas)} schemas."
+    if failed_schemas:
+        summary += f" Failed: {', '.join(failed_schemas)}. Errors: {'; '.join(errors)}"
+        logger.error(summary)
+        return False, summary
+        
+    logger.info(summary)
+    return True, summary
 
 def run_cleanup_task(active_profile: dict, retention_rules: list[dict]) -> tuple[bool, str]:
     """Helper to run all enabled database retention cleanup rules."""

@@ -1,14 +1,29 @@
 {
-    "connection_profiles": [],
-    "active_profile_id": null,
+    "connection_profiles": [
+        {
+            "id": "8dc31cac-fc35-4caa-af5f-f7e06c6fbf5b",
+            "name": "Localhost",
+            "host": "localhost",
+            "port": 3306,
+            "user": "root",
+            "password": "gAAAAABqLB3bKsN3sf9WTPXdXTMfv7XDG7AjosNXlWu7qbWP7y7nQlQy_wVy8jMosgKKQFKgQfbLN2zmS627XK3fUCYhr4RRuQ==",
+            "database": "mes_data"
+        }
+    ],
+    "active_profile_id": "8dc31cac-fc35-4caa-af5f-f7e06c6fbf5b",
     "backup_settings": {
         "mysqldump_path": "",
-        "backup_dir": "D:\\Project\\ServerManager\\backups",
+        "backup_dir": "C:/ProjectDev/ServerManager/backup",
         "compress": true,
-        "schedule_enabled": false,
-        "schedule_type": "daily",
+        "schedule_enabled": true,
+        "schedule_type": "hourly",
         "schedule_time": "02:00",
         "schedule_day": 1,
+        "schedule_interval": 1,
+        "schedule_db": "mes_data",
+        "schedule_tables": [],
+        "manual_db": "",
+        "manual_tables": [],
         "run_headless": false
     },
     "retention_rules": [],

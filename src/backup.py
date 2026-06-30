@@ -6,9 +6,10 @@ import pymysql
 from src.utils.logger import logger
 
 class MySQLBackupManager:
-    def __init__(self, profile: dict, backup_dir: str, mysqldump_path: str = "", compress: bool = True):
+    def __init__(self, profile: dict, backup_dir: str, connection_name: str = "Default", mysqldump_path: str = "", compress: bool = True):
         self.profile = profile
         self.backup_dir = backup_dir
+        self.connection_name = connection_name or "Default"
         self.mysqldump_path = mysqldump_path
         self.compress = compress
         os.makedirs(self.backup_dir, exist_ok=True)
@@ -21,7 +22,11 @@ class MySQLBackupManager:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         suffix = "partial" if tables else "full"
         sql_filename = f"backup_{database_name}_{suffix}_{timestamp}.sql"
-        sql_filepath = os.path.join(self.backup_dir, sql_filename)
+        
+        # Build path structure: {backup_dir}/{connection_name}/{schema_name}/
+        schema_dir = os.path.join(self.backup_dir, self.connection_name, database_name)
+        os.makedirs(schema_dir, exist_ok=True)
+        sql_filepath = os.path.join(schema_dir, sql_filename)
         
         logger.info(f"Starting backup for database: '{database_name}' (Tables: {tables or 'All'}).")
         
@@ -46,17 +51,20 @@ class MySQLBackupManager:
 
         # Compression if requested
         if self.compress:
-            zip_filename = f"{sql_filename}.zip"
-            zip_filepath = os.path.join(self.backup_dir, zip_filename)
+            gz_filename = f"{sql_filename}.gz"
+            gz_filepath = os.path.join(schema_dir, gz_filename)
             try:
-                logger.info(f"Compressing backup SQL file into {zip_filename}...")
-                with zipfile.ZipFile(zip_filepath, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    zipf.write(sql_filepath, arcname=sql_filename)
+                logger.info(f"Compressing backup SQL file into {gz_filename}...")
+                import gzip
+                import shutil
+                with open(sql_filepath, 'rb') as f_in:
+                    with gzip.open(gz_filepath, 'wb', compresslevel=6) as f_out:
+                        shutil.copyfileobj(f_in, f_out)
                 
                 # Delete original SQL file
                 os.remove(sql_filepath)
                 logger.info("Backup compression successful.")
-                return True, f"Backup completed successfully: {zip_filepath}"
+                return True, f"Backup completed successfully: {gz_filepath}"
             except Exception as e:
                 err_msg = f"Backup succeeded but compression failed: {str(e)}"
                 logger.error(err_msg)

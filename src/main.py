@@ -13,7 +13,7 @@ from src.scheduler import run_backup_task, run_cleanup_task
 
 def run_headless(args):
     """Headless runner interface for automated/scheduled backups and cleanups."""
-    logger.info("Initializing MySQL Server Manager Headless CLI...")
+    logger.info("Initializing Database Orchestrator Headless CLI...")
     
     config = load_config()
     active_profile = get_active_profile(config)
@@ -53,18 +53,28 @@ def run_headless(args):
 
 def run_gui():
     """Deferred GUI entry point importing PySide6 elements only when needed."""
-    logger.info("Initializing MySQL Server Manager Graphical User Interface...")
+    logger.info("Initializing Database Orchestrator Graphical User Interface...")
     
+    # Force Windows to show the custom window icon in the taskbar instead of the Python snake logo
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            myappid = 'GibzCoder.DatabaseOrchestrator.1.0'
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception as e:
+            logger.debug(f"Failed to set AppUserModelID: {e}")
+            
     try:
         from PySide6.QtWidgets import QApplication
-        from src.gui.main_window import MainWindow
+        from src.gui.main_window import MainWindow, create_app_icon
     except ImportError as e:
         logger.critical(f"Failed to load PySide6 GUI libraries. Make sure dependencies are installed: {str(e)}")
         print(f"\nCRITICAL ERROR: PySide6 library is missing. Install requirements.txt first.\nError: {e}")
         sys.exit(1)
         
     app = QApplication(sys.argv)
-    app.setApplicationName("MySQL Server Manager")
+    app.setApplicationName("Database Orchestrator")
+    app.setWindowIcon(create_app_icon())
     
     window = MainWindow()
     window.show()
@@ -72,7 +82,7 @@ def run_gui():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="MySQL Server Manager - Desktop App with Scheduled Backups & Cleanups")
+    parser = argparse.ArgumentParser(description="Database Orchestrator - Desktop App with Scheduled Backups & Cleanups")
     parser.add_argument("--headless", action="store_true", help="Run in command-line headless mode (no GUI)")
     parser.add_argument("--run-backup", action="store_true", help="Run configured database backup task")
     parser.add_argument("--run-cleanup", action="store_true", help="Run configured data retention cleanup rules")
