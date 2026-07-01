@@ -57,8 +57,8 @@ def get_app_logo_pixmap() -> QPixmap:
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Database Orchestrator")
-        self.resize(1100, 700)
+        self.setWindowTitle("DB Orchestrator")
+        self.resize(1100, 620)
         self.setStyleSheet(DARK_THEME_STYLE)
         self.setWindowIcon(create_app_icon())
         
@@ -113,29 +113,29 @@ class MainWindow(QMainWindow):
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(0)
         
-        # Sidebar Title Block
+        # Sidebar Title Block (Horizontal Row Layout)
         title_widget = QWidget()
-        self.title_layout = QVBoxLayout(title_widget)
+        self.title_layout = QHBoxLayout(title_widget)
         self.title_layout.setContentsMargins(10, 15, 10, 15)
-        self.title_layout.setSpacing(6)
+        self.title_layout.setSpacing(8)
+        self.title_layout.setAlignment(Qt.AlignCenter)
         
-        # Brand Logo (Row 1 - always centered)
+        # Brand Logo
         self.lbl_title_logo = QLabel()
         self.lbl_title_logo.setPixmap(get_app_logo_pixmap())
         self.lbl_title_logo.setStyleSheet("border: none;")
         self.lbl_title_logo.setAlignment(Qt.AlignCenter)
-        self.title_layout.addWidget(self.lbl_title_logo, 0, Qt.AlignCenter)
+        self.lbl_title_logo.setCursor(Qt.PointingHandCursor)
+        self.lbl_title_logo.mousePressEvent = lambda event: self.toggle_sidebar()
+        self.title_layout.addWidget(self.lbl_title_logo)
         
-        # Title Labels (Row 2)
-        self.title_label = QLabel("Database Orchestrator")
+        # Title Label
+        self.title_label = QLabel("DB Orchestrator")
         self.title_label.setObjectName("SidebarTitleLabel")
-        self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.title_label.setCursor(Qt.PointingHandCursor)
+        self.title_label.mousePressEvent = lambda event: self.toggle_sidebar()
         self.title_layout.addWidget(self.title_label)
-        
-        self.subtitle_label = QLabel("Database Manager")
-        self.subtitle_label.setObjectName("SidebarSubtitleLabel")
-        self.subtitle_label.setAlignment(Qt.AlignCenter)
-        self.title_layout.addWidget(self.subtitle_label)
         
         sidebar_layout.addWidget(title_widget)
         
@@ -157,7 +157,7 @@ class MainWindow(QMainWindow):
         self.sidebar_buttons = []
         pages_def = [
             ("📊  Dashboard", 0),
-            ("⚡  Jobs", 1),
+            ("⚡  Automation", 1),
             ("⚙️  Settings", 2)
         ]
         
@@ -276,7 +276,6 @@ class MainWindow(QMainWindow):
         """Update navigation labels, titles, and layouts matching sidebar state."""
         if collapsed:
             self.title_label.hide()
-            self.subtitle_label.hide()
             
             # Hide sidebar label text, leaving only Unicode icons
             self.sidebar_buttons[0].setText("📊")
@@ -288,17 +287,13 @@ class MainWindow(QMainWindow):
                 
             self.lbl_version.hide()
             
-            # Sync arrow text of the toggle buttons on the active pages to collapsed mode
-            for page in [self.dashboard_page, self.jobs_page, self.settings_page]:
-                if hasattr(page, "btn_toggle"):
-                    page.btn_toggle.setText("»")
+
         else:
             self.title_label.show()
-            self.subtitle_label.show()
             
             # Restore full labels text
             self.sidebar_buttons[0].setText("📊  Dashboard")
-            self.sidebar_buttons[1].setText("⚡  Jobs")
+            self.sidebar_buttons[1].setText("⚡  Automation")
             self.sidebar_buttons[2].setText("⚙️  Settings")
             
             for btn in self.sidebar_buttons:
@@ -307,10 +302,7 @@ class MainWindow(QMainWindow):
             self.lbl_version.show()
             self.update_profile_display()
             
-            # Sync arrow text of the toggle buttons on the active pages to expanded mode
-            for page in [self.dashboard_page, self.jobs_page, self.settings_page]:
-                if hasattr(page, "btn_toggle"):
-                    page.btn_toggle.setText("«")
+
 
     @Slot(str)
     def on_new_log(self, message: str):

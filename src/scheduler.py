@@ -57,19 +57,29 @@ def register_windows_task(task_type: str, schedule_type: str, time_str: str, day
     # /st HH:MM
     # /d MON | TUE | ... | 1-31
     sc_arg = "daily"
+    mo_val = None
     if schedule_type == "weekly":
         sc_arg = "weekly"
     elif schedule_type == "monthly":
         sc_arg = "monthly"
+    elif schedule_type == "every 4 hours":
+        sc_arg = "hourly"
+        mo_val = 4
         
     cmd = [
         "schtasks", "/create", 
         "/tn", task_name, 
         "/tr", command_str, 
         "/sc", sc_arg, 
+    ]
+    
+    if mo_val is not None:
+        cmd.extend(["/mo", str(mo_val)])
+        
+    cmd.extend([
         "/st", time_str, 
         "/f"  # Force overwrite if exists
-    ]
+    ])
     
     # Weekly requires days of week (e.g. MON, TUE)
     # Monthly requires day of month (e.g. 1-31)
@@ -185,6 +195,37 @@ class InAppSchedulerThread(threading.Thread):
 
     def is_task_due(self, task_type: str, schedule: dict, last_run_str: str, now: datetime) -> bool:
         """Determines if a task should be run based on schedule type, time, and last execution date."""
+        # Parse last run
+        last_run = None
+        if last_run_str:
+            try:
+                last_run = datetime.strptime(last_run_str, "%Y-%m-%d %H:%M:%S")
+            except Exception:
+                pass
+                
+        schedule_type = schedule.get("schedule_type", "daily")
+        day_val = schedule.get("schedule_day", 1)
+        
+        if schedule_type == "every 4 hours":
+            # Repetition starts relative to the configured Start Time of the day
+            sched_time_str = schedule.get("schedule_time", "02:00")
+            try:
+                start_hour, start_min = map(int, sched_time_str.split(":"))
+            except Exception:
+                start_hour, start_min = 2, 0
+                
+            start_dt = now.replace(hour=start_hour, minute=start_min, second=0, microsecond=0)
+            diff_seconds = (now - start_dt).total_seconds()
+            
+            # Find the nearest 4-hourly repetition boundary before or equal to 'now'
+            import math
+            k = math.floor(diff_seconds / (4 * 3600))
+            last_slot = start_dt + timedelta(hours=k * 4)
+            
+            if not last_run or last_run < last_slot:
+                return True
+            return False
+            
         sched_time_str = schedule.get("schedule_time", "02:00")
         try:
             sched_hour, sched_min = map(int, sched_time_str.split(":"))
@@ -197,17 +238,6 @@ class InAppSchedulerThread(threading.Thread):
         # If current time is before the scheduled hour today, we definitely don't run yet
         if now < target_time:
             return False
-            
-        # Parse last run
-        last_run = None
-        if last_run_str:
-            try:
-                last_run = datetime.strptime(last_run_str, "%Y-%m-%d %H:%M:%S")
-            except Exception:
-                pass
-                
-        schedule_type = schedule.get("schedule_type", "daily")
-        day_val = schedule.get("schedule_day", 1)
         
         if schedule_type == "daily":
             # If never run, or last run was before today

@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFrame,
                                QComboBox, QSpinBox, QMessageBox, QTimeEdit, 
                                QTableWidget, QTableWidgetItem, QHeaderView, 
                                QAbstractItemView, QListWidget, QListWidgetItem,
-                               QTextEdit, QScrollArea)
+                               QTextEdit, QScrollArea, QTabWidget, QFormLayout)
 from PySide6.QtCore import Qt, QTime, Slot, QMetaObject, Q_ARG
 from src.utils.config import load_config, save_config
 from src.connection import MySQLConnectionManager
@@ -35,164 +35,171 @@ class JobsPage(QWidget):
         # Header
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 10)
-        header_layout.setSpacing(10)
         
-        self.btn_toggle = QPushButton("«")
-        self.btn_toggle.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: none;
-                color: #a1a1aa;
-                font-size: 18px;
-                font-weight: bold;
-                max-width: 32px;
-                max-height: 32px;
-                padding: 4px;
-            }
-            QPushButton:hover {
-                background-color: #27272a;
-                color: #ffffff;
-                border-radius: 4px;
-            }
-        """)
-        self.btn_toggle.clicked.connect(self.main_window.toggle_sidebar)
-        header_layout.addWidget(self.btn_toggle, 0, Qt.AlignVCenter)
-        
-        title_text_layout = QVBoxLayout()
-        title_text_layout.setSpacing(2)
-        
-        title = QLabel("Scheduled & Manual Jobs")
+        title = QLabel("Automation")
         title.setObjectName("PageTitle")
-        title_text_layout.addWidget(title)
+        header_layout.addWidget(title)
         
-        subtitle = QLabel("Manage multi-schema backups and data retention deletion rules side-by-side.")
-        subtitle.setObjectName("PageSubtitle")
-        title_text_layout.addWidget(subtitle)
-        
-        header_layout.addLayout(title_text_layout)
         main_layout.addLayout(header_layout)
         
-        # Side-by-Side scrollable content layout
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        # Tabs container
+        self.tabs = QTabWidget()
         
-        content_widget = QWidget()
-        scroll_layout = QHBoxLayout(content_widget)
-        scroll_layout.setContentsMargins(0, 0, 0, 0)
-        scroll_layout.setSpacing(15)
+        # Setup Tabs
+        self.tab_backup = QWidget()
+        self.tab_retention = QWidget()
+        self.tab_mes = QWidget()
         
-        # COLUMN 1: Backup Jobs
-        col_backup_frame = QFrame()
-        col_backup_frame.setObjectName("CardFrame")
-        col_backup_layout = QVBoxLayout(col_backup_frame)
-        col_backup_layout.setSpacing(10)
+        self.setup_backup_tab()
+        self.setup_retention_tab()
+        self.setup_mes_tab()
         
-        b_title = QLabel("1. Multi-Schema Backup Configuration")
+        self.tabs.addTab(self.tab_backup, "DB Backup Config")
+        self.tabs.addTab(self.tab_retention, "Data Retention Rules")
+        self.tabs.addTab(self.tab_mes, "MES Automation")
+        
+        main_layout.addWidget(self.tabs, 3)
+        
+        # BOTTOM: Log Console Box
+        self.log_console = QTextEdit()
+        self.log_console.setObjectName("LogConsole")
+        self.log_console.setReadOnly(True)
+        self.log_console.setMinimumHeight(150)
+        self.log_console.setMaximumHeight(200)
+        main_layout.addWidget(self.log_console, 1)
+
+    def setup_backup_tab(self):
+        tab_layout = QHBoxLayout(self.tab_backup)
+        tab_layout.setContentsMargins(15, 15, 15, 15)
+        tab_layout.setSpacing(15)
+        
+        # Left Panel: Manual Backups
+        card_manual = QFrame()
+        card_manual.setObjectName("CardFrame")
+        col_manual_layout = QVBoxLayout(card_manual)
+        col_manual_layout.setSpacing(10)
+        
+        b_title = QLabel("Manual Schema Backup")
         b_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #6366f1; margin-bottom: 5px;")
-        col_backup_layout.addWidget(b_title)
+        col_manual_layout.addWidget(b_title)
         
         self.lbl_selected_db = QLabel("No active profile configured.")
         self.lbl_selected_db.setStyleSheet("font-weight: bold; color: #ef4444;")
-        col_backup_layout.addWidget(self.lbl_selected_db)
+        col_manual_layout.addWidget(self.lbl_selected_db)
         
-        col_backup_layout.addWidget(QLabel("Select Schemas to Backup:"))
+        col_manual_layout.addWidget(QLabel("Select Schemas to Backup:"))
         self.chk_select_all = QCheckBox("Select All")
         self.chk_select_all.stateChanged.connect(self.on_select_all_changed)
-        col_backup_layout.addWidget(self.chk_select_all)
+        col_manual_layout.addWidget(self.chk_select_all)
         
         self.list_databases = QListWidget()
-        self.list_databases.setMinimumHeight(150)
-        self.list_databases.setMaximumHeight(200)
+        self.list_databases.setMinimumHeight(120)
+        self.list_databases.setMaximumHeight(180)
         self.list_databases.setObjectName("DatabaseList")
-        col_backup_layout.addWidget(self.list_databases)
+        col_manual_layout.addWidget(self.list_databases)
         
         self.chk_compress = QCheckBox("Compress manual backups (.sql.gz format)")
         self.chk_compress.setChecked(True)
-        col_backup_layout.addWidget(self.chk_compress)
+        col_manual_layout.addWidget(self.chk_compress)
         
         self.btn_backup_now = QPushButton("Backup Selected Schemas Now")
         self.btn_backup_now.setObjectName("PrimaryButton")
         self.btn_backup_now.setFixedHeight(35)
         self.btn_backup_now.clicked.connect(self.trigger_manual_backup)
-        col_backup_layout.addWidget(self.btn_backup_now)
+        col_manual_layout.addWidget(self.btn_backup_now)
+        col_manual_layout.addStretch()
         
-        # Backup Schedule Section
-        bs_sep = QFrame()
-        bs_sep.setObjectName("PageSeparator")
-        bs_sep.setFrameShape(QFrame.HLine)
-        bs_sep.setStyleSheet("margin: 10px 0px;")
-        col_backup_layout.addWidget(bs_sep)
+        tab_layout.addWidget(card_manual, 1)
         
-        col_backup_layout.addWidget(QLabel("Backup Recurrence Schedule:"))
+        # Right Panel: Automated Recurrent Schedule
+        card_schedule = QFrame()
+        card_schedule.setObjectName("CardFrame")
+        col_sched_layout = QVBoxLayout(card_schedule)
+        col_sched_layout.setSpacing(10)
+        
+        sched_title = QLabel("Automated Backup Schedule")
+        sched_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #10b981; margin-bottom: 5px;")
+        col_sched_layout.addWidget(sched_title)
+        
         self.chk_b_sched_enable = QCheckBox("Enable Recurrent Backups")
         self.chk_b_sched_enable.stateChanged.connect(self.toggle_backup_schedule_inputs)
-        col_backup_layout.addWidget(self.chk_b_sched_enable)
+        col_sched_layout.addWidget(self.chk_b_sched_enable)
         
+        col_sched_layout.addWidget(QLabel("Recurrence Frequency:"))
         self.cb_b_freq = QComboBox()
-        self.cb_b_freq.addItems(["Daily", "Weekly", "Monthly"])
+        self.cb_b_freq.addItems(["Every 4 Hours", "Daily", "Weekly", "Monthly"])
         self.cb_b_freq.currentIndexChanged.connect(self.toggle_backup_frequency_inputs)
-        col_backup_layout.addWidget(self.cb_b_freq)
+        col_sched_layout.addWidget(self.cb_b_freq)
         
         b_time_layout = QHBoxLayout()
-        b_time_layout.addWidget(QLabel("Time:"))
+        self.lbl_time_type = QLabel("Scheduled Time:")
+        b_time_layout.addWidget(self.lbl_time_type)
         self.time_b_edit = QTimeEdit()
         self.time_b_edit.setTime(QTime(2, 0))
         b_time_layout.addWidget(self.time_b_edit)
-        col_backup_layout.addLayout(b_time_layout)
+        col_sched_layout.addLayout(b_time_layout)
         
+        col_sched_layout.addWidget(QLabel("Day of Week/Month:"))
         self.cb_b_day_week = QComboBox()
         self.cb_b_day_week.addItems(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"])
-        col_backup_layout.addWidget(self.cb_b_day_week)
+        col_sched_layout.addWidget(self.cb_b_day_week)
         
         self.spin_b_day_month = QSpinBox()
         self.spin_b_day_month.setRange(1, 31)
-        col_backup_layout.addWidget(self.spin_b_day_month)
+        col_sched_layout.addWidget(self.spin_b_day_month)
         
         self.chk_b_headless = QCheckBox("Run when closed (Windows Task)")
-        col_backup_layout.addWidget(self.chk_b_headless)
+        col_sched_layout.addWidget(self.chk_b_headless)
         
         self.btn_save_backup_schedule = QPushButton("Save Backup Schedule")
         self.btn_save_backup_schedule.setObjectName("SuccessButton")
         self.btn_save_backup_schedule.clicked.connect(self.save_backup_schedule)
-        col_backup_layout.addWidget(self.btn_save_backup_schedule)
-        col_backup_layout.addStretch()
+        col_sched_layout.addWidget(self.btn_save_backup_schedule)
+        col_sched_layout.addStretch()
         
-        scroll_layout.addWidget(col_backup_frame, 1)
+        tab_layout.addWidget(card_schedule, 1)
+
+    def setup_retention_tab(self):
+        tab_layout = QHBoxLayout(self.tab_retention)
+        tab_layout.setContentsMargins(15, 15, 15, 15)
+        tab_layout.setSpacing(15)
         
-        # COLUMN 2: Retention Rules & Deletion
-        col_retention_frame = QFrame()
-        col_retention_frame.setObjectName("CardFrame")
-        col_retention_layout = QVBoxLayout(col_retention_frame)
+        # Left side: Rule creation form card
+        card_form = QFrame()
+        card_form.setObjectName("CardFrame")
+        col_retention_layout = QVBoxLayout(card_form)
         col_retention_layout.setSpacing(10)
         
-        r_title = QLabel("2. Data Retention Deletion Rules")
+        r_title = QLabel("Retention Deletion Rule Editor")
         r_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #0ea5e9; margin-bottom: 5px;")
         col_retention_layout.addWidget(r_title)
         
+        # Form layout for compact fields
+        form_layout = QFormLayout()
+        form_layout.setSpacing(8)
+        form_layout.setLabelAlignment(Qt.AlignRight)
+        
         # Database Selection
-        col_retention_layout.addWidget(QLabel("Database:"))
         self.cb_db = QComboBox()
         self.cb_db.currentIndexChanged.connect(self.on_db_changed)
-        col_retention_layout.addWidget(self.cb_db)
+        form_layout.addRow("Database:", self.cb_db)
         
         # Table Selection
-        col_retention_layout.addWidget(QLabel("Table:"))
         self.cb_table = QComboBox()
         self.cb_table.currentIndexChanged.connect(self.on_table_changed)
-        col_retention_layout.addWidget(self.cb_table)
+        form_layout.addRow("Table:", self.cb_table)
         
         # Column Selection
-        col_retention_layout.addWidget(QLabel("Date/Timestamp Column:"))
         self.cb_column = QComboBox()
-        col_retention_layout.addWidget(self.cb_column)
+        form_layout.addRow("Date Column:", self.cb_column)
         
         # Retention Window
-        col_retention_layout.addWidget(QLabel("Retention Window (Months):"))
         self.spin_months = QSpinBox()
         self.spin_months.setRange(1, 120)
         self.spin_months.setValue(6)
-        col_retention_layout.addWidget(self.spin_months)
+        form_layout.addRow("Retain (Mo):", self.spin_months)
+        
+        col_retention_layout.addLayout(form_layout)
         
         self.chk_rule_enabled = QCheckBox("Enable this rule")
         self.chk_rule_enabled.setChecked(True)
@@ -210,19 +217,24 @@ class JobsPage(QWidget):
         r_act_layout.addWidget(self.btn_clean_now)
         col_retention_layout.addLayout(r_act_layout)
         
-        self.btn_save_rule = QPushButton("Add/Update Rule")
+        self.btn_save_rule = QPushButton("Add New Rule")
         self.btn_save_rule.setObjectName("PrimaryButton")
         self.btn_save_rule.clicked.connect(self.save_rule)
         col_retention_layout.addWidget(self.btn_save_rule)
+        col_retention_layout.addStretch()
         
-        # Active rules list table
-        r_list_sep = QFrame()
-        r_list_sep.setObjectName("PageSeparator")
-        r_list_sep.setFrameShape(QFrame.HLine)
-        r_list_sep.setStyleSheet("margin: 10px 0px;")
-        col_retention_layout.addWidget(r_list_sep)
+        tab_layout.addWidget(card_form, 1)
         
-        col_retention_layout.addWidget(QLabel("Active Rules Table:"))
+        # Right side: Table list card
+        card_table = QFrame()
+        card_table.setObjectName("CardFrame")
+        table_layout = QVBoxLayout(card_table)
+        table_layout.setSpacing(10)
+        
+        table_title = QLabel("Active Retention Rules")
+        table_title.setStyleSheet("font-size: 15px; font-weight: bold; color: #10b981; margin-bottom: 5px;")
+        table_layout.addWidget(table_title)
+        
         self.table_rules = QTableWidget()
         self.table_rules.setColumnCount(5)
         self.table_rules.setHorizontalHeaderLabels(["DB", "Table", "Column", "Retain", "Status"])
@@ -232,8 +244,7 @@ class JobsPage(QWidget):
         self.table_rules.setSelectionMode(QAbstractItemView.SingleSelection)
         self.table_rules.verticalHeader().setVisible(False)
         self.table_rules.itemSelectionChanged.connect(self.on_rule_row_selected)
-        self.table_rules.setMinimumHeight(150)
-        col_retention_layout.addWidget(self.table_rules)
+        table_layout.addWidget(self.table_rules)
         
         r_row_btns = QHBoxLayout()
         self.btn_delete_rule = QPushButton("Delete Rule")
@@ -244,21 +255,26 @@ class JobsPage(QWidget):
         self.btn_new_rule = QPushButton("Reset Selection")
         self.btn_new_rule.clicked.connect(self.reset_selection)
         r_row_btns.addWidget(self.btn_new_rule)
-        col_retention_layout.addLayout(r_row_btns)
-        col_retention_layout.addStretch()
+        table_layout.addLayout(r_row_btns)
         
-        scroll_layout.addWidget(col_retention_frame, 1)
+        tab_layout.addWidget(card_table, 2)
+
+    def setup_mes_tab(self):
+        tab_layout = QVBoxLayout(self.tab_mes)
+        tab_layout.setContentsMargins(15, 15, 15, 15)
+        tab_layout.setSpacing(15)
         
-        scroll_area.setWidget(content_widget)
-        main_layout.addWidget(scroll_area, 3)
+        placeholder = QFrame()
+        placeholder.setObjectName("CardFrame")
+        placeholder_layout = QVBoxLayout(placeholder)
+        placeholder_layout.setAlignment(Qt.AlignCenter)
         
-        # BOTTOM: Log Console Box
-        self.log_console = QTextEdit()
-        self.log_console.setObjectName("LogConsole")
-        self.log_console.setReadOnly(True)
-        self.log_console.setMinimumHeight(150)
-        self.log_console.setMaximumHeight(200)
-        main_layout.addWidget(self.log_console, 1)
+        lbl_msg = QLabel("MES Automation features are currently under development.")
+        lbl_msg.setStyleSheet("font-size: 14px; font-weight: bold; color: #a1a1aa;")
+        lbl_msg.setAlignment(Qt.AlignCenter)
+        placeholder_layout.addWidget(lbl_msg)
+        
+        tab_layout.addWidget(placeholder)
 
     def refresh_page(self):
         """Update active server connection profile status and schemas lists."""
@@ -406,13 +422,20 @@ class JobsPage(QWidget):
             return
             
         freq = self.cb_b_freq.currentText()
-        if freq == "Daily":
+        if freq == "Every 4 Hours":
+            self.lbl_time_type.setText("Start Time:")
+            self.cb_b_day_week.hide()
+            self.spin_b_day_month.hide()
+        elif freq == "Daily":
+            self.lbl_time_type.setText("Scheduled Time:")
             self.cb_b_day_week.hide()
             self.spin_b_day_month.hide()
         elif freq == "Weekly":
+            self.lbl_time_type.setText("Scheduled Time:")
             self.cb_b_day_week.show()
             self.spin_b_day_month.hide()
         elif freq == "Monthly":
+            self.lbl_time_type.setText("Scheduled Time:")
             self.cb_b_day_week.hide()
             self.spin_b_day_month.show()
 

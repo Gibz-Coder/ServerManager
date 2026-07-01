@@ -28,41 +28,11 @@ class SettingsPage(QWidget):
         # Header
         header_layout = QHBoxLayout()
         header_layout.setContentsMargins(0, 0, 0, 10)
-        header_layout.setSpacing(10)
-        
-        self.btn_toggle = QPushButton("«")
-        self.btn_toggle.setStyleSheet("""
-            QPushButton {
-                background-color: transparent;
-                border: none;
-                color: #a1a1aa;
-                font-size: 18px;
-                font-weight: bold;
-                max-width: 32px;
-                max-height: 32px;
-                padding: 4px;
-            }
-            QPushButton:hover {
-                background-color: #27272a;
-                color: #ffffff;
-                border-radius: 4px;
-            }
-        """)
-        self.btn_toggle.clicked.connect(self.main_window.toggle_sidebar)
-        header_layout.addWidget(self.btn_toggle, 0, Qt.AlignVCenter)
-        
-        title_text_layout = QVBoxLayout()
-        title_text_layout.setSpacing(2)
         
         title = QLabel("Settings")
         title.setObjectName("PageTitle")
-        title_text_layout.addWidget(title)
+        header_layout.addWidget(title)
         
-        subtitle = QLabel("Manage connection credentials, backup paths, automated cleanup schedules, and theme options.")
-        subtitle.setObjectName("PageSubtitle")
-        title_text_layout.addWidget(subtitle)
-        
-        header_layout.addLayout(title_text_layout)
         layout.addLayout(header_layout)
         
         # Tabs container

@@ -133,5 +133,24 @@ class TestServerManagerLogic(unittest.TestCase):
         mock_copyfileobj.assert_called()
         mock_remove.assert_called()
 
+    def test_scheduler_every_4_hours(self):
+        """Test that the 4-hourly scheduler correctly determines task execution states."""
+        from src.scheduler import InAppSchedulerThread
+        from datetime import datetime
+        
+        scheduler = InAppSchedulerThread()
+        
+        # Test case 1: Task has never run
+        schedule = {"schedule_type": "every 4 hours"}
+        self.assertTrue(scheduler.is_task_due("backup", schedule, "", datetime(2026, 6, 30, 12, 0, 0)))
+        
+        # Test case 2: Task ran 5 hours ago (should be due)
+        last_run_str = "2026-06-30 07:00:00"
+        self.assertTrue(scheduler.is_task_due("backup", schedule, last_run_str, datetime(2026, 6, 30, 12, 0, 0)))
+        
+        # Test case 3: Task ran 2 hours ago (should NOT be due)
+        last_run_str = "2026-06-30 10:30:00"
+        self.assertFalse(scheduler.is_task_due("backup", schedule, last_run_str, datetime(2026, 6, 30, 12, 0, 0)))
+
 if __name__ == '__main__':
     unittest.main()

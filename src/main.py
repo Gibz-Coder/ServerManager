@@ -13,7 +13,7 @@ from src.scheduler import run_backup_task, run_cleanup_task
 
 def run_headless(args):
     """Headless runner interface for automated/scheduled backups and cleanups."""
-    logger.info("Initializing Database Orchestrator Headless CLI...")
+    logger.info("Initializing DB Orchestrator Headless CLI...")
     
     config = load_config()
     active_profile = get_active_profile(config)
@@ -53,7 +53,7 @@ def run_headless(args):
 
 def run_gui():
     """Deferred GUI entry point importing PySide6 elements only when needed."""
-    logger.info("Initializing Database Orchestrator Graphical User Interface...")
+    logger.info("Initializing DB Orchestrator Graphical User Interface...")
     
     # Force Windows to show the custom window icon in the taskbar instead of the Python snake logo
     if sys.platform == "win32":
@@ -73,7 +73,7 @@ def run_gui():
         sys.exit(1)
         
     app = QApplication(sys.argv)
-    app.setApplicationName("Database Orchestrator")
+    app.setApplicationName("DB Orchestrator")
     app.setWindowIcon(create_app_icon())
     
     window = MainWindow()
@@ -82,7 +82,7 @@ def run_gui():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Database Orchestrator - Desktop App with Scheduled Backups & Cleanups")
+    parser = argparse.ArgumentParser(description="DB Orchestrator - Desktop App with Scheduled Backups & Cleanups")
     parser.add_argument("--headless", action="store_true", help="Run in command-line headless mode (no GUI)")
     parser.add_argument("--run-backup", action="store_true", help="Run configured database backup task")
     parser.add_argument("--run-cleanup", action="store_true", help="Run configured data retention cleanup rules")

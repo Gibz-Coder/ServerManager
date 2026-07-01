@@ -147,8 +147,9 @@ QCheckBox::indicator {
 }
 
 QCheckBox::indicator:checked {
-    background-color: #6366f1;
+    background-color: #1e1e24;
     border-color: #6366f1;
+    image: url(src/gui/checkbox_checked_dark.svg);
 }
 
 /* Buttons */
@@ -526,8 +527,9 @@ QCheckBox::indicator {
 }
 
 QCheckBox::indicator:checked {
-    background-color: #2563eb;
+    background-color: #ffffff;
     border-color: #2563eb;
+    image: url(src/gui/checkbox_checked_light.svg);
 }
 
 /* Buttons */
@@ -907,8 +909,9 @@ QCheckBox::indicator {
 }
 
 QCheckBox::indicator:checked {
-    background-color: #0ea5e9;
+    background-color: #1e293b;
     border-color: #0ea5e9;
+    image: url(src/gui/checkbox_checked_midnight.svg);
 }
 
 /* Buttons */
