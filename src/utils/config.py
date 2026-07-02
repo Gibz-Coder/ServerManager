@@ -83,6 +83,18 @@ DEFAULT_CONFIG = {
         "schedule_time": "03:00",
         "schedule_day": 1,
         "run_headless": False
+    },
+    "mes_scraper_settings": {
+        "schedule_enabled": False,
+        "interval_minutes": 5,
+        "offline_mode": True,      # Default to true since development PC cannot access servers
+        "mes_url": "http://107.105.195.34:8080",
+        "mes_username": "",
+        "mes_password": "",
+        "ees_host": "107.105.195.140",
+        "ees_port": 8003,
+        "ees_connect_string": "EES",
+        "local_ip": ""
     }
 }
 
@@ -140,3 +152,77 @@ def get_active_profile(config: dict = None) -> dict:
             return profile_copy
             
     return None
+
+def sync_mes_dotenv(config: dict = None):
+    """Sync settings from config.json and active database profile to mes_scraper/.env."""
+    if config is None:
+        config = load_config()
+    
+    mes_settings = config.get("mes_scraper_settings", {})
+    active_profile = get_active_profile(config)
+    
+    mes_url = mes_settings.get("mes_url", "http://107.105.195.34:8080")
+    mes_username = mes_settings.get("mes_username", "")
+    mes_password = mes_settings.get("mes_password", "")
+    ees_host = mes_settings.get("ees_host", "107.105.195.140")
+    ees_port = str(mes_settings.get("ees_port", 8003))
+    ees_connect_string = mes_settings.get("ees_connect_string", "EES")
+    local_ip = mes_settings.get("local_ip", "")
+    interval = str(mes_settings.get("interval_minutes", 5))
+    
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(mes_url)
+        mes_host = parsed.hostname or ""
+        mes_port = str(parsed.port or 80)
+    except Exception:
+        mes_host = ""
+        mes_port = "80"
+        
+    db_host = ""
+    db_port = "3306"
+    db_name = "mes_data"
+    db_user = ""
+    db_password = ""
+    
+    if active_profile:
+        db_host = active_profile.get("host", "127.0.0.1")
+        db_port = str(active_profile.get("port", 3306))
+        db_name = active_profile.get("database", "mes_data")
+        db_user = active_profile.get("user", "")
+        db_password = active_profile.get("password", "")
+        
+    lines = [
+        "# MES App credentials",
+        f"MES_URL={mes_url}",
+        f"MES_HOST={mes_host}",
+        f"MES_PORT={mes_port}",
+        f"LOCAL_IP={local_ip}",
+        f"MES_USERNAME={mes_username}",
+        f"MES_PASSWORD={mes_password}",
+        "",
+        "# EES (Equipment Event System) WCF service",
+        f"EES_HOST={ees_host}",
+        f"EES_PORT={ees_port}",
+        f"EES_CONNECT_STRING={ees_connect_string}",
+        "",
+        "# MySQL connection",
+        f"DB_HOST={db_host}",
+        f"DB_PORT={db_port}",
+        f"DB_NAME={db_name}",
+        f"DB_USER={db_user}",
+        f"DB_PASSWORD={db_password}",
+        "",
+        "# Scrape interval in minutes",
+        f"SCRAPE_INTERVAL_MINUTES={interval}",
+        ""
+    ]
+    
+    dotenv_path = os.path.join(WORKSPACE_DIR, "mes_scraper", ".env")
+    try:
+        os.makedirs(os.path.dirname(dotenv_path), exist_ok=True)
+        with open(dotenv_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        logger.info(f"Synchronized configuration to {dotenv_path}")
+    except Exception as e:
+        logger.error(f"Failed to write scraper .env file: {str(e)}")

@@ -44,6 +44,7 @@ class JobsPage(QWidget):
         
         # Tabs container
         self.tabs = QTabWidget()
+        self.tabs.currentChanged.connect(self.on_tab_changed)
         
         # Setup Tabs
         self.tab_backup = QWidget()
@@ -264,17 +265,98 @@ class JobsPage(QWidget):
         tab_layout.setContentsMargins(15, 15, 15, 15)
         tab_layout.setSpacing(15)
         
-        placeholder = QFrame()
-        placeholder.setObjectName("CardFrame")
-        placeholder_layout = QVBoxLayout(placeholder)
-        placeholder_layout.setAlignment(Qt.AlignCenter)
+        # Top panel: Status & Actions (Horizontal Layout)
+        top_panels = QHBoxLayout()
+        top_panels.setSpacing(15)
         
-        lbl_msg = QLabel("MES Automation features are currently under development.")
-        lbl_msg.setStyleSheet("font-size: 14px; font-weight: bold; color: #a1a1aa;")
-        lbl_msg.setAlignment(Qt.AlignCenter)
-        placeholder_layout.addWidget(lbl_msg)
+        # Left Panel: Status Control
+        self.card_mes_status = QFrame()
+        self.card_mes_status.setObjectName("CardFrame")
+        status_layout = QVBoxLayout(self.card_mes_status)
+        status_layout.setSpacing(10)
         
-        tab_layout.addWidget(placeholder)
+        status_title = QLabel("MES AUTOMATION STATUS")
+        status_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #6366f1; margin-bottom: 2px;")
+        status_layout.addWidget(status_title)
+        
+        self.lbl_mes_status = QLabel("🔴 Stopped")
+        self.lbl_mes_status.setStyleSheet("font-size: 18px; font-weight: bold; color: #ef4444;")
+        status_layout.addWidget(self.lbl_mes_status)
+        
+        self.lbl_mes_desc = QLabel("Automated 24/7 scraping is disabled.")
+        self.lbl_mes_desc.setStyleSheet("font-size: 12px; color: #a1a1aa;")
+        status_layout.addWidget(self.lbl_mes_desc)
+        
+        btns_layout = QHBoxLayout()
+        self.btn_toggle_mes = QPushButton("Start Automation")
+        self.btn_toggle_mes.setObjectName("SuccessButton")
+        self.btn_toggle_mes.clicked.connect(self.toggle_mes_scheduler)
+        btns_layout.addWidget(self.btn_toggle_mes)
+        
+        self.btn_run_now = QPushButton("Run Scraper Now")
+        self.btn_run_now.setObjectName("PrimaryButton")
+        self.btn_run_now.clicked.connect(self.trigger_manual_scrape)
+        btns_layout.addWidget(self.btn_run_now)
+        status_layout.addLayout(btns_layout)
+        status_layout.addStretch()
+        
+        top_panels.addWidget(self.card_mes_status, 1)
+        
+        # Right Panel: Last Execution Metrics
+        self.card_mes_metrics = QFrame()
+        self.card_mes_metrics.setObjectName("CardFrame")
+        metrics_layout = QVBoxLayout(self.card_mes_metrics)
+        metrics_layout.setSpacing(8)
+        
+        metrics_title = QLabel("LAST SCRAPING RUN METRICS")
+        metrics_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #10b981; margin-bottom: 2px;")
+        metrics_layout.addWidget(metrics_title)
+        
+        self.lbl_mes_last_run = QLabel("Last Run: Never")
+        self.lbl_mes_last_run.setStyleSheet("font-size: 14px; font-weight: bold; color: #e4e4e7;")
+        metrics_layout.addWidget(self.lbl_mes_last_run)
+        
+        self.lbl_mes_mode = QLabel("Scraper Mode: --")
+        self.lbl_mes_mode.setStyleSheet("font-size: 12px; color: #a1a1aa;")
+        metrics_layout.addWidget(self.lbl_mes_mode)
+        
+        self.lbl_mes_next_run = QLabel("Next Run: --")
+        self.lbl_mes_next_run.setStyleSheet("font-size: 12px; color: #a1a1aa;")
+        metrics_layout.addWidget(self.lbl_mes_next_run)
+        
+        metrics_layout.addStretch()
+        top_panels.addWidget(self.card_mes_metrics, 1)
+        
+        tab_layout.addLayout(top_panels, 1)
+        
+        # Bottom panel: Database Record Counts Table
+        card_db_counts = QFrame()
+        card_db_counts.setObjectName("CardFrame")
+        db_layout = QVBoxLayout(card_db_counts)
+        db_layout.setSpacing(10)
+        
+        db_title_layout = QHBoxLayout()
+        db_title = QLabel("MES Database Target Tables & Record Counts")
+        db_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #38bdf8;")
+        db_title_layout.addWidget(db_title)
+        
+        self.btn_refresh_counts = QPushButton("🔄 Refresh Counts")
+        self.btn_refresh_counts.setFixedWidth(120)
+        self.btn_refresh_counts.clicked.connect(self.refresh_mes_table_counts)
+        db_title_layout.addWidget(self.btn_refresh_counts)
+        db_layout.addLayout(db_title_layout)
+        
+        self.table_mes_counts = QTableWidget()
+        self.table_mes_counts.setColumnCount(3)
+        self.table_mes_counts.setHorizontalHeaderLabels(["Table Name", "Total Record Count", "Data Size (MB)"])
+        self.table_mes_counts.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self.table_mes_counts.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table_mes_counts.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table_mes_counts.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.table_mes_counts.verticalHeader().setVisible(False)
+        db_layout.addWidget(self.table_mes_counts)
+        
+        tab_layout.addWidget(card_db_counts, 2)
 
     def refresh_page(self):
         """Update active server connection profile status and schemas lists."""
@@ -326,6 +408,12 @@ class JobsPage(QWidget):
         def_db = profile.get("database")
         if def_db and def_db in self.databases:
             self.cb_db.setCurrentIndex(self.cb_db.findText(def_db))
+            
+        # Refresh MES tab too
+        try:
+            self.refresh_mes_tab()
+        except AttributeError:
+            pass
 
     def on_db_changed(self):
         self.cb_table.clear()
@@ -736,3 +824,179 @@ class JobsPage(QWidget):
     def scroll_to_bottom(self):
         scrollbar = self.log_console.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
+
+    def on_tab_changed(self, index):
+        if index == 2:  # MES Automation Tab
+            self.refresh_mes_tab()
+
+    def refresh_mes_tab(self):
+        config = load_config()
+        mes_settings = config.get("mes_scraper_settings", {})
+        
+        enabled = mes_settings.get("schedule_enabled", False)
+        interval = mes_settings.get("interval_minutes", 5)
+        offline = mes_settings.get("offline_mode", True)
+        
+        self.lbl_mes_mode.setText(f"Scraper Mode: {'Offline / Mock' if offline else 'Online / Live MES'}")
+        
+        if enabled:
+            self.lbl_mes_status.setText(f"🟢 Active (Every {interval}m)")
+            self.lbl_mes_status.setStyleSheet("font-size: 18px; font-weight: bold; color: #10b981;")
+            self.lbl_mes_desc.setText(f"Automated scraping schedule is running 24/7.")
+            self.btn_toggle_mes.setText("Stop Automation")
+            self.btn_toggle_mes.setObjectName("DangerButton")
+        else:
+            self.lbl_mes_status.setText("🔴 Stopped")
+            self.lbl_mes_status.setStyleSheet("font-size: 18px; font-weight: bold; color: #ef4444;")
+            self.lbl_mes_desc.setText("Automated scraping is disabled.")
+            self.btn_toggle_mes.setText("Start Automation")
+            self.btn_toggle_mes.setObjectName("SuccessButton")
+            
+        self.btn_toggle_mes.style().unpolish(self.btn_toggle_mes)
+        self.btn_toggle_mes.style().polish(self.btn_toggle_mes)
+            
+        from src.scheduler import load_last_runs
+        last_runs = load_last_runs()
+        last_run_str = last_runs.get("mes_scraper", "")
+        
+        if last_run_str:
+            self.lbl_mes_last_run.setText(f"Last Run: {last_run_str}")
+            
+            try:
+                from datetime import datetime, timedelta
+                last_run_dt = datetime.strptime(last_run_str, "%Y-%m-%d %H:%M:%S")
+                next_run_dt = last_run_dt + timedelta(minutes=interval)
+                self.lbl_mes_next_run.setText(f"Next Run: {next_run_dt.strftime('%Y-%m-%d %H:%M:%S')}")
+            except Exception:
+                self.lbl_mes_next_run.setText("Next Run: Error calculating")
+        else:
+            self.lbl_mes_last_run.setText("Last Run: Never")
+            if enabled:
+                self.lbl_mes_next_run.setText("Next Run: Due Imminently")
+            else:
+                self.lbl_mes_next_run.setText("Next Run: --")
+                
+        self.refresh_mes_table_counts()
+
+    def refresh_mes_table_counts(self):
+        profile = self.main_window.active_profile
+        self.table_mes_counts.setRowCount(0)
+        
+        target_tables = [
+            "wip_status", "wip_status_snapshot",
+            "monthly_plan", "monthly_plan_snapshot",
+            "process_result", "process_result_snapshot",
+            "process_trackout", "process_trackout_snapshot",
+            "eqp_detailed_history", "eqp_detailed_history_snapshot"
+        ]
+        
+        if not profile:
+            self.table_mes_counts.setRowCount(len(target_tables))
+            for idx, tbl in enumerate(target_tables):
+                self.table_mes_counts.setItem(idx, 0, QTableWidgetItem(tbl))
+                self.table_mes_counts.setItem(idx, 1, QTableWidgetItem("Offline / Disconnected"))
+                self.table_mes_counts.setItem(idx, 2, QTableWidgetItem("--"))
+            return
+            
+        mgr = MySQLConnectionManager(profile)
+        db_name = profile.get("database", "mes_data")
+        
+        try:
+            stats = mgr.get_table_stats(db_name)
+            stats_dict = {row["name"]: row for row in stats}
+        except Exception as e:
+            logger.error(f"Failed to query database table statistics: {e}")
+            stats_dict = {}
+            
+        self.table_mes_counts.setRowCount(len(target_tables))
+        for idx, tbl in enumerate(target_tables):
+            row_data = stats_dict.get(tbl)
+            
+            tbl_item = QTableWidgetItem(tbl)
+            self.table_mes_counts.setItem(idx, 0, tbl_item)
+            
+            if row_data:
+                rows_item = QTableWidgetItem(f"{row_data['rows']:,}")
+                rows_item.setTextAlignment(Qt.AlignCenter)
+                self.table_mes_counts.setItem(idx, 1, rows_item)
+                
+                size_item = QTableWidgetItem(f"{row_data['size_mb']:.2f} MB")
+                size_item.setTextAlignment(Qt.AlignCenter)
+                self.table_mes_counts.setItem(idx, 2, size_item)
+            else:
+                try:
+                    conn = mgr.get_connection()
+                    with conn.cursor() as cursor:
+                        cursor.execute(f"SELECT COUNT(*) as cnt FROM `{db_name}`.`{tbl}`")
+                        cnt = cursor.fetchone()["cnt"]
+                        rows_item = QTableWidgetItem(f"{cnt:,}")
+                        rows_item.setTextAlignment(Qt.AlignCenter)
+                        self.table_mes_counts.setItem(idx, 1, rows_item)
+                    conn.close()
+                except Exception:
+                    rows_item = QTableWidgetItem("Table not created")
+                    rows_item.setTextAlignment(Qt.AlignCenter)
+                    rows_item.setForeground(Qt.gray)
+                    self.table_mes_counts.setItem(idx, 1, rows_item)
+                    
+                self.table_mes_counts.setItem(idx, 2, QTableWidgetItem("--"))
+
+    def toggle_mes_scheduler(self):
+        config = load_config()
+        mes_settings = config.get("mes_scraper_settings", {})
+        
+        enabled = not mes_settings.get("schedule_enabled", False)
+        mes_settings["schedule_enabled"] = enabled
+        
+        config["mes_scraper_settings"] = mes_settings
+        save_config(config)
+        
+        if enabled:
+            logger.info("Background MES Scraper automation scheduler enabled.")
+            QMessageBox.information(self, "Scheduler Active", "MES Scraper scheduler activated. It will run in the background every 5 minutes.")
+        else:
+            logger.info("Background MES Scraper automation scheduler disabled.")
+            QMessageBox.information(self, "Scheduler Stopped", "MES Scraper scheduler deactivated.")
+            
+        self.refresh_mes_tab()
+
+    def trigger_manual_scrape(self):
+        profile = self.main_window.active_profile
+        if not profile:
+            QMessageBox.warning(self, "No Active Profile", "Active connection profile required to write scraped data.")
+            return
+            
+        self.btn_run_now.setEnabled(False)
+        self.btn_run_now.setText("Scraping...")
+        self.lbl_mes_status.setText("🔄 Scraping in progress...")
+        self.lbl_mes_status.setStyleSheet("font-size: 18px; font-weight: bold; color: #38bdf8;")
+        self.repaint()
+        
+        config = load_config()
+        offline = config.get("mes_scraper_settings", {}).get("offline_mode", True)
+        
+        def worker():
+            try:
+                from src.scheduler import run_mes_scraper_task
+                success, msg = run_mes_scraper_task(offline=offline)
+                QMetaObject.invokeMethod(self, "on_scrape_complete", Qt.QueuedConnection,
+                                         Q_ARG(bool, success), Q_ARG(str, msg))
+            except Exception as e:
+                logger.error(f"Manual scraping runner exception: {e}")
+                QMetaObject.invokeMethod(self, "on_scrape_complete", Qt.QueuedConnection,
+                                         Q_ARG(bool, False), Q_ARG(str, str(e)))
+                
+        t = threading.Thread(target=worker)
+        t.daemon = True
+        t.start()
+
+    @Slot(bool, str)
+    def on_scrape_complete(self, success: bool, message: str):
+        self.btn_run_now.setEnabled(True)
+        self.btn_run_now.setText("Run Scraper Now")
+        if success:
+            QMessageBox.information(self, "Success", "Scraping job completed and database records updated successfully!")
+        else:
+            QMessageBox.critical(self, "Scraper Failed", f"Scraper execution failed:\n\n{message}")
+        self.refresh_mes_tab()
+        self.main_window.dashboard_page.refresh_page()

@@ -1,24 +1,28 @@
-# MySQL Server Manager
+# DB Orchestrator
 
-A robust, modern desktop GUI and headless command-line tool built with Python and PySide6 to automate database management, scheduled backups, and chunked data retention policies for MySQL servers.
+A robust, modern desktop GUI and headless command-line tool built with Python and PySide6 to automate database management, scheduled backups, chunked data retention policies, and automated scraping/syncing for MySQL servers.
 
 ---
 
 ## Key Features
 
-- **Modern Dark-Themed GUI**: Built using PySide6 with a sleek, responsive dark mode design.
-- **Connection Profile Manager**: Save, switch, and test credentials for multiple MySQL databases/servers.
-- **Database Statistics Dashboard**: Displays database/table sizes (in MB) and row counts dynamically.
+- **Dynamic Theme-Switchable GUI**: Built using PySide6 with a sleek, responsive design supporting three custom themes: **Dark Mode**, **Light Mode**, and **Midnight Blue**. Includes a collapsible sidebar with slide transition animations.
+- **Connection Profile Manager**: Save, switch, test, and securely store credentials for multiple MySQL databases/servers using **Fernet symmetric encryption** via [config.py](file:///c:/ProjectDev/ServerManager/src/utils/config.py).
+- **Database Statistics Dashboard**: Displays active database/table sizes (in MB) and row counts dynamically, with live logging output in the console pane.
 - **Automated Database Backups**:
-  - Leverages native `mysqldump` (secure password masking via environmental variables) with automatic `.zip` compression.
-  - Fallback to a **Pure-Python streaming engine** (via `PyMySQL` server-side cursors) for environments without MySQL client binaries installed.
+  - Leverages native `mysqldump` (secure password masking via temporary environmental variables) with automatic `.zip`/`.gz` compression.
+  - Fallback to a **Pure-Python streaming engine** (via `PyMySQL` server-side cursors in [backup.py](file:///c:/ProjectDev/ServerManager/src/backup.py)) for environments without MySQL client binaries installed.
 - **Chunked Data Retention Cleanups**:
-  - Clean up historical records older than a configured threshold (e.g., 6 months).
-  - Deletes in configurable chunks (default: 5000) with minor server pauses to avoid row-locking, transaction blocks, and CPU spikes on high-load production servers.
+  - Clean up historical records older than a configured threshold (e.g., 6 or 12 months) via retention rules.
+  - Deletes in configurable chunks (default: 5000) with minor server pauses (e.g., 0.1s sleep) to avoid row-locking, transaction blocks, and CPU spikes on high-load production servers.
   - Built-in dry-run feature to count records matching policies before execution.
 - **Dual-Mode Task Scheduler**:
-  - **In-App Scheduler**: Background threads monitor schedules while the desktop application is open.
+  - **In-App Scheduler**: Background threads monitor schedules and execute backups, retention cleanups, and MES scraper jobs while the desktop application is open.
   - **Windows Task Scheduler Integration**: Integrates directly with Windows Task Scheduler (`schtasks.exe`) to configure headless runs that execute on schedule even when the GUI is completely closed.
+- **Integrated MES & EES Scraper**:
+  - Automates scraping of SEMPHIL MES reports (WIP Status, Monthly Plan, Process Result, and Process Trackout) and Equipment Event System (EES) history.
+  - Supports both online scraping and offline replaying of local binaries for testing and development.
+  - See the detailed [MES Scraper Developer Guide](file:///c:/ProjectDev/ServerManager/mes_scraper/README.md) for more details.
 
 ---
 
@@ -27,8 +31,8 @@ A robust, modern desktop GUI and headless command-line tool built with Python an
 ```text
 ├── config.json               # Local configuration for connection profiles, backup & retention schedules
 ├── requirements.txt          # Python dependencies
-├── install_offline.txt       # Script instructions to set up the python environment offline
-├── run_gui.txt               # Script instructions to launch the GUI manager
+├── run_setup.bat             # Auto-installer for the virtual environment & dependencies (supports offline/online mode)
+├── run_x_gui.bat             # Desktop GUI launcher script
 ├── src/
 │   ├── main.py               # Main application entry point (GUI / Headless CLI router)
 │   ├── backup.py             # Database backup manager (mysqldump & Python streaming fallback)
@@ -36,18 +40,17 @@ A robust, modern desktop GUI and headless command-line tool built with Python an
 │   ├── connection.py         # MySQL connection profile validator & statistics queries
 │   ├── scheduler.py          # Local scheduler threads & Windows Task Scheduler command integrations
 │   ├── gui/                  # PySide6 application window views and components
-│   │   ├── main_window.py    # Main window and sidebar frame controller
-│   │   ├── theme.py          # Custom CSS style definition sheet (Dark theme styling)
+│   │   ├── main_window.py    # Main window, navigation tabs, and animated sidebar controller
+│   │   ├── theme.py          # Custom CSS style definition sheets (Dark, Light, Midnight styling)
 │   │   ├── dashboard_page.py # DB statistics dashboard widget
-│   │   ├── connection_page.py# Server profile manager widget
-│   │   ├── backup_page.py    # Backups configuration widget
-│   │   ├── cleanup_page.py   # Retention rules & dry runs widget
-│   │   └── logs_page.py      # Console logger viewer widget
+│   │   ├── jobs_page.py      # Automation widget (DB backups, data retention, MES scraper sync)
+│   │   └── settings_page.py  # Configurations widget (Server connections, schedules, scraper config, theme selector)
 │   └── utils/
-│       ├── config.py         # Configuration profile loaders and savers
+│       ├── config.py         # Configuration profile loaders/savers with Fernet password encryption
 │       └── logger.py         # Thread-safe subscribing logger engine
+├── mes_scraper/              # Standalone MES/EES Scraper module with binary parsers and snapshot tables
 └── tests/
-    └── test_logic.py         # Unit tests validating backup streaming and chunked cleanup deletes
+    └── test_logic.py         # Unit tests validating backup streaming, chunked cleanups, and scheduler calculations
 ```
 
 ---
@@ -58,7 +61,14 @@ A robust, modern desktop GUI and headless command-line tool built with Python an
 - **Python 3.10 or higher** installed and added to the system `PATH`.
 - A running MySQL/MariaDB server instance to connect to.
 
-### Online Setup (Standard)
+### Windows Automatic Setup (Recommended)
+On Windows, you can automatically set up the virtual environment and install all dependencies by double-clicking [run_setup.bat](file:///c:/ProjectDev/ServerManager/run_setup.bat) or running:
+```cmd
+run_setup.bat
+```
+*Note: This script automatically detects if `offline_packages/` is present to run a local offline installation; otherwise, it will fetch dependencies online from PyPI.*
+
+### Manual Setup (Cross-Platform)
 1. Open a terminal in the root directory.
 2. Initialize a virtual environment:
    ```bash
@@ -74,17 +84,14 @@ A robust, modern desktop GUI and headless command-line tool built with Python an
      source .venv/bin/activate
      ```
 4. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-### Offline Setup (Windows Environment)
-If installing on an offline or restricted server:
-1. Ensure the `offline_packages/` directory containing the `.whl` files is present in the workspace.
-2. Rename [install_offline.txt](install_offline.txt) to `install_offline.bat` and double-click to execute. This automatically creates the virtual environment and installs the wheels offline using:
-   ```cmd
-   .\.venv\Scripts\python.exe -m pip install --no-index --find-links=offline_packages -r requirements.txt
-   ```
+   - **Online**:
+     ```bash
+     pip install -r requirements.txt
+     ```
+   - **Offline (Windows)**:
+     ```cmd
+     pip install --no-index --find-links=offline_packages -r requirements.txt
+     ```
 
 ---
 
@@ -92,7 +99,11 @@ If installing on an offline or restricted server:
 
 ### 1. Graphical User Interface (GUI)
 To launch the desktop manager:
-- Rename [run_gui.txt](run_gui.txt) to `run_gui.bat` and run it, or launch via:
+- Double-click the launcher script [run_x_gui.bat](file:///c:/ProjectDev/ServerManager/run_x_gui.bat), or run:
+  ```cmd
+  run_x_gui.bat
+  ```
+- Alternatively, launch via python directly:
   ```bash
   python src/main.py
   ```
@@ -120,7 +131,7 @@ python src/main.py --headless --run-tasks
 ## Scheduling System
 
 ### Headless Windows Task Scheduler Setup
-When you enable scheduling and check **Run Headless (Windows Task)** inside the GUI settings:
+When you enable scheduling and check **Run Headless (Windows Task)** inside the GUI settings under "General & Cleanup Recurrence":
 1. The app invokes Windows `schtasks.exe` via Python subprocess.
 2. It registers a task named `MySQL_ServerManager_Backup` and/or `MySQL_ServerManager_Cleanup`.
 3. The task runs invisible to the user in the background, executing the headless command:
@@ -140,5 +151,7 @@ schtasks /query /tn "MySQL_ServerManager_Backup"
 To verify the core logic engines (backup and chunked cleanup) without connecting to a real database, execute the unit tests from the project root:
 
 ```bash
-python -m unittest tests/test_logic.py
+python tests/test_logic.py
 ```
+
+

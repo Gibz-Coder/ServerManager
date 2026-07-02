@@ -42,14 +42,17 @@ class SettingsPage(QWidget):
         # Setup Tabs
         self.tab_connections = QWidget()
         self.tab_general_cleanup = QWidget()
+        self.tab_mes_scraper = QWidget()
         self.tab_appearance = QWidget()
         
         self.setup_connections_tab()
         self.setup_general_cleanup_tab()
+        self.setup_mes_scraper_tab()
         self.setup_appearance_tab()
         
         self.tabs.addTab(self.tab_connections, "Connection Profiles")
         self.tabs.addTab(self.tab_general_cleanup, "General & Cleanup Recurrence")
+        self.tabs.addTab(self.tab_mes_scraper, "MES Scraper Settings")
         self.tabs.addTab(self.tab_appearance, "Appearance & Theme")
         
         layout.addWidget(self.tabs)
@@ -278,6 +281,67 @@ class SettingsPage(QWidget):
         tab_layout.addWidget(theme_frame)
         tab_layout.addStretch()
 
+    def setup_mes_scraper_tab(self):
+        tab_layout = QVBoxLayout(self.tab_mes_scraper)
+        tab_layout.setContentsMargins(15, 15, 15, 15)
+        tab_layout.setSpacing(15)
+        
+        frame = QFrame()
+        frame.setObjectName("CardFrame")
+        form_layout = QFormLayout(frame)
+        form_layout.setSpacing(10)
+        form_layout.setLabelAlignment(Qt.AlignRight)
+        
+        title = QLabel("MES & EES Scraper Configuration")
+        title.setObjectName("FormHeader")
+        form_layout.addRow(title)
+        
+        self.chk_mes_offline = QCheckBox("Run in Offline / Mock Mode (Use captured binary files)")
+        self.chk_mes_offline.setChecked(True)
+        form_layout.addRow("", self.chk_mes_offline)
+        
+        self.txt_mes_url = QLineEdit()
+        self.txt_mes_url.setPlaceholderText("http://107.105.195.34:8080")
+        form_layout.addRow("MES URL:", self.txt_mes_url)
+        
+        self.txt_mes_username = QLineEdit()
+        form_layout.addRow("MES Employee Username:", self.txt_mes_username)
+        
+        self.txt_mes_password = QLineEdit()
+        self.txt_mes_password.setEchoMode(QLineEdit.Password)
+        form_layout.addRow("MES Employee Password:", self.txt_mes_password)
+        
+        self.txt_ees_host = QLineEdit()
+        self.txt_ees_host.setPlaceholderText("107.105.195.140")
+        form_layout.addRow("EES net.tcp Host:", self.txt_ees_host)
+        
+        self.txt_ees_port = QLineEdit()
+        self.txt_ees_port.setPlaceholderText("8003")
+        form_layout.addRow("EES Service Port:", self.txt_ees_port)
+        
+        self.txt_ees_conn = QLineEdit()
+        self.txt_ees_conn.setPlaceholderText("EES")
+        form_layout.addRow("EES Connection String:", self.txt_ees_conn)
+        
+        self.txt_local_ip = QLineEdit()
+        self.txt_local_ip.setPlaceholderText("e.g. 107.105.55.96")
+        form_layout.addRow("Development Local IP:", self.txt_local_ip)
+        
+        self.spin_mes_interval = QSpinBox()
+        self.spin_mes_interval.setRange(1, 1440)
+        self.spin_mes_interval.setValue(5)
+        self.spin_mes_interval.setSuffix(" minutes")
+        form_layout.addRow("Scrape Interval:", self.spin_mes_interval)
+        
+        btn_save_mes = QPushButton("Save & Sync Scraper Settings")
+        btn_save_mes.setObjectName("PrimaryButton")
+        btn_save_mes.setFixedHeight(35)
+        btn_save_mes.clicked.connect(self.save_mes_scraper_settings)
+        form_layout.addRow("", btn_save_mes)
+        
+        tab_layout.addWidget(frame)
+        tab_layout.addStretch()
+
     def browse_backup_dir(self):
         dir_path = QFileDialog.getExistingDirectory(self, "Select Backup Destination Directory")
         if dir_path:
@@ -317,6 +381,18 @@ class SettingsPage(QWidget):
         self.spin_day_month.setValue(max(1, min(day_val, 31)))
         
         self.chk_headless.setChecked(c_sched.get("run_headless", False))
+        
+        # MES Scraper Settings
+        mes_settings = config.get("mes_scraper_settings", {})
+        self.chk_mes_offline.setChecked(mes_settings.get("offline_mode", True))
+        self.txt_mes_url.setText(mes_settings.get("mes_url", "http://107.105.195.34:8080"))
+        self.txt_mes_username.setText(mes_settings.get("mes_username", ""))
+        self.txt_mes_password.setText(mes_settings.get("mes_password", ""))
+        self.txt_ees_host.setText(mes_settings.get("ees_host", "107.105.195.140"))
+        self.txt_ees_port.setText(str(mes_settings.get("ees_port", 8003)))
+        self.txt_ees_conn.setText(mes_settings.get("ees_connect_string", "EES"))
+        self.txt_local_ip.setText(mes_settings.get("local_ip", ""))
+        self.spin_mes_interval.setValue(mes_settings.get("interval_minutes", 5))
         
         # Appearance
         saved_theme = config.get("theme", "Dark Mode")
@@ -600,3 +676,32 @@ class SettingsPage(QWidget):
         logger.info(f"Theme style updated and applied: {selected_theme}")
         self.main_window.apply_theme(selected_theme)
         QMessageBox.information(self, "Theme Applied", f"Application theme switched to {selected_theme}.")
+
+    def save_mes_scraper_settings(self):
+        config = load_config()
+        mes_settings = config.get("mes_scraper_settings", {})
+        
+        mes_settings["offline_mode"] = self.chk_mes_offline.isChecked()
+        mes_settings["mes_url"] = self.txt_mes_url.text().strip()
+        mes_settings["mes_username"] = self.txt_mes_username.text().strip()
+        mes_settings["mes_password"] = self.txt_mes_password.text()
+        mes_settings["ees_host"] = self.txt_ees_host.text().strip()
+        
+        try:
+            port_val = int(self.txt_ees_port.text().strip() or "8003")
+        except ValueError:
+            port_val = 8003
+        mes_settings["ees_port"] = port_val
+        mes_settings["ees_connect_string"] = self.txt_ees_conn.text().strip()
+        mes_settings["local_ip"] = self.txt_local_ip.text().strip()
+        mes_settings["interval_minutes"] = self.spin_mes_interval.value()
+        
+        config["mes_scraper_settings"] = mes_settings
+        save_config(config)
+        
+        # Sync to mes_scraper/.env
+        from src.utils.config import sync_mes_dotenv
+        sync_mes_dotenv(config)
+        
+        logger.info("Saved MES Scraper configuration parameters and synchronized .env file.")
+        QMessageBox.information(self, "Success", "MES Scraper settings saved and synced to scraper .env successfully.")

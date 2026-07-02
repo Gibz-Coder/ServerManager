@@ -1,19 +1,9 @@
 {
-    "connection_profiles": [
-        {
-            "id": "8dc31cac-fc35-4caa-af5f-f7e06c6fbf5b",
-            "name": "ProVission",
-            "host": "localhost",
-            "port": 3306,
-            "user": "root",
-            "password": "gAAAAABqQ9i3P78-a8sPuGwA5h1n_LmsD6c5jVULR4mM9KKICp1aI3I1oMjsAcY3B-CP-7CGieJKWkr9BMPY6YMjMVcEnoQ4bA==",
-            "database": "mes_data"
-        }
-    ],
-    "active_profile_id": "8dc31cac-fc35-4caa-af5f-f7e06c6fbf5b",
+    "connection_profiles": [],
+    "active_profile_id": null,
     "backup_settings": {
         "mysqldump_path": "",
-        "backup_dir": "C:/ProjectDev/ServerManager/backup",
+        "backup_dir": "C:/installer/ServerManager/backup",
         "compress": true,
         "schedule_enabled": true,
         "schedule_type": "every 4 hours",
@@ -27,7 +17,7 @@
         "manual_tables": [],
         "schemas": [
             "mes_data",
-            "vicis_prodash"
+            "visual_dashboard"
         ]
     },
     "retention_rules": [
@@ -59,6 +49,18 @@
         "schedule_time": "01:00",
         "schedule_day": 1,
         "run_headless": false
+    },
+    "mes_scraper_settings": {
+        "schedule_enabled": false,
+        "interval_minutes": 5,
+        "offline_mode": true,
+        "mes_url": "http://107.105.195.34:8080",
+        "mes_username": "",
+        "mes_password": "",
+        "ees_host": "107.105.195.140",
+        "ees_port": 8003,
+        "ees_connect_string": "EES",
+        "local_ip": "107.105.55.217"
     },
     "theme": "Midnight Blue"
 }
