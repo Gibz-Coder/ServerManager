@@ -1,6 +1,16 @@
 {
-    "connection_profiles": [],
-    "active_profile_id": null,
+    "connection_profiles": [
+        {
+            "id": "dev_local_1",
+            "name": "Dev MySQL Server",
+            "host": "127.0.0.1",
+            "port": 3306,
+            "database": "mes_data",
+            "user": "root",
+            "password": "gAAAAABqr7WYSwhKKrtKJfU2IZlt0LwFnJM3Tk51bfBvfU96l3JBR4NQOGothnxHF8enrKIf9UPAViNqx6tRcSfz27T1Z3zHVw=="
+        }
+    ],
+    "active_profile_id": "dev_local_1",
     "backup_settings": {
         "mysqldump_path": "",
         "backup_dir": "C:/installer/ServerManager/backup",
@@ -23,7 +33,7 @@
     "retention_rules": [
         {
             "db": "mes_data",
-            "table": "eqp_detailed_history_snapshot",
+            "table": "eqp_current_status_snapshot",
             "column": "scraped_at",
             "months": 6,
             "enabled": true
@@ -53,6 +63,7 @@
     "mes_scraper_settings": {
         "schedule_enabled": false,
         "interval_minutes": 5,
+        "ees_interval_seconds": 30,
         "offline_mode": true,
         "mes_url": "http://107.105.195.34:8080",
         "mes_username": "",

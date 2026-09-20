@@ -267,61 +267,11 @@ def backfill_rpt40120_day(target_date: date, session,
     return results
 
 
-# ── EES backfill ──────────────────────────────────────────────────────────────
-
-def backfill_ees_day(target_date: date, dry_run: bool = False) -> int:
-    """
-    Fetch and store EES EPT0184 for one calendar day.
-    Uses the same _fetch_ees() code path as main.py — guaranteed to work.
-    Returns number of rows inserted (0 if already exists or no data).
-    """
-    from ees_scraper import _fetch_ees, clean_ees_rows
-
-    table = "eqp_detailed_history_snapshot"
-
-    # Skip if already filled
-    existing = _already_has_snapshot(table, target_date)
-    if existing > 0:
-        log.info(f"    {table} {target_date} — {existing} rows already exist — skipping")
-        return existing
-
-    fr_date = target_date.strftime("%Y-%m-%d") + " 00:00"
-    to_date = (target_date + timedelta(days=1)).strftime("%Y-%m-%d") + " 00:00:00"
-    log.info(f"    EES fetch: {fr_date} → {to_date}")
-
-    if dry_run:
-        log.info(f"    [DRY RUN] Would fetch EES for {target_date}")
-        return 0
-
-    # Retry loop — same backoff as before
-    rows = []
-    for attempt in range(1, MAX_RETRIES + 1):
-        try:
-            rows = _fetch_ees(date_range=(fr_date, to_date))
-            log.info(f"    EES → {len(rows)} rows")
-            break
-        except Exception as e:
-            wait = RETRY_DELAY * attempt
-            log.warning(f"    EES attempt {attempt}/{MAX_RETRIES} failed: {e}")
-            if attempt < MAX_RETRIES:
-                log.info(f"    Waiting {wait}s before retry...")
-                time.sleep(wait)
-            else:
-                log.error(f"    EES all retries exhausted for {target_date}")
-
-    if rows:
-        _insert_with_date(table, rows, target_date)
-        return len(rows)
-    else:
-        log.info(f"    EES {target_date} — 0 rows (no equipment events that day)")
-        return 0
-
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Backfill snapshot tables — 1 day per request"
+        description="Backfill RPT40120 snapshot tables — 1 day per request"
     )
     parser.add_argument(
         "--from", dest="from_date", default="2026-01-01",
@@ -331,10 +281,6 @@ def main():
         "--to", dest="to_date", default="2026-04-28",
         help="End date inclusive (YYYY-MM-DD)    default: 2026-04-28",
     )
-    parser.add_argument("--ees-only", action="store_true",
-                        help="Only backfill EES snapshots")
-    parser.add_argument("--mes-only", action="store_true",
-                        help="Only backfill RPT40120 snapshots")
     parser.add_argument("--dry-run",  action="store_true",
                         help="Show plan only — no network calls, no DB writes")
     parser.add_argument(
@@ -346,14 +292,11 @@ def main():
     start  = parse_date(args.from_date)
     end    = parse_date(args.to_date)
     days   = list(date_range(start, end))
-    do_mes = not args.ees_only
-    do_ees = not args.mes_only
 
     log.info("=" * 65)
     log.info("  Snapshot Backfill")
     log.info(f"  Date range : {start} → {end}  ({len(days)} days)")
-    log.info(f"  MES RPT40120 : {'YES' if do_mes else 'NO'}")
-    log.info(f"  EES EPT0184  : {'YES' if do_ees else 'NO'}")
+    log.info(f"  MES RPT40120 : YES")
     log.info(f"  Dry run      : {'YES' if args.dry_run else 'NO'}")
     log.info(f"  Delay        : {args.delay}s between days")
     log.info(f"  Timeout      : {REQUEST_TIMEOUT}s per request")
@@ -362,54 +305,40 @@ def main():
     log.info("=" * 65)
 
     # Estimate time
-    requests_per_day = (2 if do_mes else 0) + (1 if do_ees else 0)
+    requests_per_day = 2
     est_seconds = len(days) * (requests_per_day * 15 + args.delay)
     log.info(f"  Estimated time: ~{est_seconds/60:.0f} min (assuming ~15s/request)")
     log.info("  Skips dates already in snapshot tables — safe to re-run.\n")
 
     # MES needs a session
     session = None
-    if do_mes and not args.dry_run:
+    if not args.dry_run:
         from scraper_direct import get_session
         log.info("Logging into MES (needed for RPT40120 JSESSIONID)...")
         session = get_session()
         log.info("MES session ready.\n")
 
     # Counters
-    total = {'output': 0, 'trackout': 0, 'ees': 0, 'errors': 0, 'skipped': 0}
+    total = {'output': 0, 'trackout': 0, 'errors': 0, 'skipped': 0}
 
     for i, d in enumerate(days, 1):
         log.info(f"[{i:3d}/{len(days)}] {d} ─────────────────────────────")
 
-        if do_mes:
-            try:
-                r = backfill_rpt40120_day(d, session, dry_run=args.dry_run)
-                total['output']   += r.get('output', 0)
-                total['trackout'] += r.get('trackout', 0)
-            except Exception as e:
-                log.error(f"  MES {d} unexpected error: {e}")
-                total['errors'] += 1
-            if not args.dry_run:
-                time.sleep(args.delay)
-
-        if do_ees:
-            try:
-                n = backfill_ees_day(d, dry_run=args.dry_run)
-                total['ees'] += n
-            except Exception as e:
-                log.error(f"  EES {d} unexpected error: {e}")
-                total['errors'] += 1
-            if not args.dry_run:
-                time.sleep(args.delay)
+        try:
+            r = backfill_rpt40120_day(d, session, dry_run=args.dry_run)
+            total['output']   += r.get('output', 0)
+            total['trackout'] += r.get('trackout', 0)
+        except Exception as e:
+            log.error(f"  MES {d} unexpected error: {e}")
+            total['errors'] += 1
+        if not args.dry_run:
+            time.sleep(args.delay)
 
     log.info("\n" + "=" * 65)
     log.info("  Backfill Complete")
     log.info(f"  Days processed : {len(days)}")
-    if do_mes:
-        log.info(f"  process_result_snapshot    : {total['output']:,} rows")
-        log.info(f"  process_trackout_snapshot  : {total['trackout']:,} rows")
-    if do_ees:
-        log.info(f"  eqp_detailed_history_snapshot : {total['ees']:,} rows")
+    log.info(f"  process_result_snapshot    : {total['output']:,} rows")
+    log.info(f"  process_trackout_snapshot  : {total['trackout']:,} rows")
     if total['errors']:
         log.info(f"  Errors : {total['errors']}  (check {PROGRESS_LOG})")
     log.info("=" * 65)

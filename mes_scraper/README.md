@@ -14,7 +14,7 @@ and stores data in MySQL.
 | RPT40496 — Monthly Plan | `monthly_plan` | `monthly_plan_snapshot` | 8080 | HTTP POST (XPlatform binary) | Every run |
 | RPT40120 — Process Result (Output) | `process_result` | `process_result_snapshot` | 8081 | HTTP POST (XPlatform binary) | Every run |
 | RPT40120 — Process Trackout | `process_trackout` | `process_trackout_snapshot` | 8081 | HTTP POST (XPlatform binary) | Every run |
-| EPT0184 — Equipment Detailed History | `eqp_detailed_history` | `eqp_detailed_history_snapshot` | 8003 | WCF net.tcp (binary encoding) | Every run |
+| EPT0103 — Equipment Current Status | `eqp_current_status` | `eqp_current_status_snapshot` | 8003 | WCF net.tcp (binary encoding) | Every run (Hourly snapshot) |
 
 ---
 
@@ -33,23 +33,24 @@ Response format:
 
 EES Service
   │
-  └─ TCP :8003 → ExecQuery (pr_EPT_HistoryByEQP_SearchData)
+  └─ TCP :8003 → ExecQuery (pr_EPT_EquipCurrentStatus)
 ```
 
 ### Key Files
 
 ```
 mes_scraper/
-  main.py                Entry point — scheduler, job runner, snapshot logic
-  scraper_direct.py      HTTP replay, XP binary parser, column maps, patch functions
-  ees_scraper.py         WCF net.tcp client for scraping Equipment Detailed History (EPT0184)
-  db.py                  MySQL table definitions and INSERT logic
-  xp_requests.json       Captured POST bodies for each RPT report
-  ees_wcf_request_full.bin Captured WCF binary template for EES requests
-  .env                   Credentials and config (synced from DB Orchestrator config)
-  proxy_intercept.py     Proxy interceptor (for port 8080 reports only)
-  backfill_snapshots.py  Utility to backfill historical snapshot data for target date ranges
-  repair_equipment_names.py Repair utility to fix garbage values in equipment_name columns
+  main.py                            Entry point — scheduler, job runner, snapshot logic
+  scraper_direct.py                  HTTP replay, XP binary parser, column maps, patch functions
+  ees_scraper.py                     WCF net.tcp client for scraping Equipment Current Status (EPT0103)
+  db.py                              MySQL table definitions and INSERT logic
+  xp_requests.json                   Captured POST bodies for each RPT report
+  ees_wcf_current_status_request.bin Captured WCF binary template for EES requests
+  debug_ees_current_status.bin       Offline response binary for EES Current Status
+  .env                               Credentials and config (synced from DB Orchestrator config)
+  proxy_intercept.py                 Proxy interceptor (for port 8080 reports only)
+  backfill_snapshots.py              Utility to backfill historical snapshot data for target date ranges
+  repair_equipment_names.py          Repair utility to fix garbage values in equipment_name columns
 ```
 
 
