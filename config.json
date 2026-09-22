@@ -1,16 +1,16 @@
 {
     "connection_profiles": [
         {
-            "id": "dev_local_1",
-            "name": "Dev MySQL Server",
-            "host": "127.0.0.1",
+            "id": "4d065e3d-e010-44f9-af34-370faa6f353a",
+            "name": "Provision",
+            "host": "107.105.55.96",
             "port": 3306,
-            "database": "mes_data",
-            "user": "root",
-            "password": "gAAAAABqr7WYSwhKKrtKJfU2IZlt0LwFnJM3Tk51bfBvfU96l3JBR4NQOGothnxHF8enrKIf9UPAViNqx6tRcSfz27T1Z3zHVw=="
+            "user": "provission-admin",
+            "password": "gAAAAABqsjQ24_3RmbcSkHE_UvCC02XS3qq-B9_cbtiYxHfC1-hPyJgGHJ8te48SsEkDO9aPY1-s43JLv8MOvAiPWMjboGHzoQ==",
+            "database": "mes_data"
         }
     ],
-    "active_profile_id": "dev_local_1",
+    "active_profile_id": "4d065e3d-e010-44f9-af34-370faa6f353a",
     "backup_settings": {
         "mysqldump_path": "",
         "backup_dir": "C:/installer/ServerManager/backup",
@@ -30,29 +30,7 @@
             "visual_dashboard"
         ]
     },
-    "retention_rules": [
-        {
-            "db": "mes_data",
-            "table": "eqp_current_status_snapshot",
-            "column": "scraped_at",
-            "months": 6,
-            "enabled": true
-        },
-        {
-            "db": "mes_data",
-            "table": "monthly_plan_snapshot",
-            "column": "scraped_at",
-            "months": 6,
-            "enabled": true
-        },
-        {
-            "db": "mes_data",
-            "table": "process_result_snapshot",
-            "column": "scraped_at",
-            "months": 12,
-            "enabled": true
-        }
-    ],
+    "retention_rules": [],
     "retention_schedule": {
         "schedule_enabled": true,
         "schedule_type": "daily",
@@ -61,13 +39,12 @@
         "run_headless": false
     },
     "mes_scraper_settings": {
-        "schedule_enabled": false,
+        "schedule_enabled": true,
         "interval_minutes": 5,
-        "ees_interval_seconds": 30,
-        "offline_mode": true,
+        "offline_mode": false,
         "mes_url": "http://107.105.195.34:8080",
-        "mes_username": "",
-        "mes_password": "",
+        "mes_username": "21278703",
+        "mes_password": "semphil01*",
         "ees_host": "107.105.195.140",
         "ees_port": 8003,
         "ees_connect_string": "EES",

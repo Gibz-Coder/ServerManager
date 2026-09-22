@@ -87,7 +87,6 @@ DEFAULT_CONFIG = {
     "mes_scraper_settings": {
         "schedule_enabled": False,
         "interval_minutes": 5,
-        "ees_interval_seconds": 30,  # Real-time equipment status scrape interval in seconds
         "offline_mode": True,      # Default to true since development PC cannot access servers
         "mes_url": "http://107.105.195.34:8080",
         "mes_username": "",
@@ -170,7 +169,6 @@ def sync_mes_dotenv(config: dict = None):
     ees_connect_string = mes_settings.get("ees_connect_string", "EES")
     local_ip = mes_settings.get("local_ip", "")
     interval = str(mes_settings.get("interval_minutes", 5))
-    ees_interval = str(mes_settings.get("ees_interval_seconds", 30))
     
     from urllib.parse import urlparse
     try:
@@ -215,11 +213,8 @@ def sync_mes_dotenv(config: dict = None):
         f"DB_USER={db_user}",
         f"DB_PASSWORD={db_password}",
         "",
-        "# Scrape interval in minutes (MES reports)",
+        "# Scrape interval in minutes",
         f"SCRAPE_INTERVAL_MINUTES={interval}",
-        "",
-        "# EES Equipment Current Status scrape interval in seconds",
-        f"EES_INTERVAL_SECONDS={ees_interval}",
         ""
     ]
     

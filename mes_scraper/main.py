@@ -22,7 +22,7 @@ from scraper_direct import (
     _patch_rpt40120_post_body, parse_xplatform_binary,
     get_session, load_captured_requests,
 )
-from ees_scraper import fetch_ees_current_status
+from ees_scraper import fetch_ees_history, fetch_ees_history_yesterday
 
 load_dotenv()
 
@@ -37,7 +37,6 @@ logging.Formatter.converter = lambda *args: datetime.now(MANILA_TZ).timetuple()
 log = logging.getLogger(__name__)
 
 INTERVAL = int(os.getenv("SCRAPE_INTERVAL_MINUTES", 5))
-EES_INTERVAL = int(os.getenv("EES_INTERVAL_SECONDS", 30))
 REQUESTS_FILE = os.path.join(os.path.dirname(__file__), "xp_requests.json")
 
 # Fixed mappings for named captures
@@ -305,25 +304,36 @@ def run_job(offline: bool = False):
 
 def run_ees_job(offline: bool = False):
     """
-    Fetch EES Equipment Current Status (Visual Inspection) and store in DB.
-      - Realtime table (eqp_current_status): truncated + refilled every run with latest machine states
-      - Snapshot table (eqp_current_status_snapshot): hourly snapshot per machine
+    Fetch EES Equipment Detailed History and store in DB.
+
+    Mirrors RPT40120 snapshot logic:
+      - Realtime table (eqp_detailed_history):  truncated + refilled every run with TODAY's data
+      - Snapshot table (eqp_detailed_history_snapshot): inserted once per day on run #3+
+        using YESTERDAY's data, allowing ~10-15 min EES reflection delay after midnight
     """
-    log.info("=== Starting EES Current Status scrape job ===")
+    log.info("=== Starting EES scrape job ===")
     try:
-        rows = fetch_ees_current_status(offline=offline)
+        # ── Realtime: today's data ────────────────────────────────────────────
+        rows = fetch_ees_history(offline=offline)
         if rows:
-            from collections import Counter
-            states = Counter(r.get("state_name", "UNKNOWN") for r in rows)
-            log.info(f"[ees] {len(rows)} machines fetched. State summary: {dict(states)}")
-
-            # 1. Update realtime current status
-            insert_rows("eqp_current_status", rows)
-
-            # 2. Store hourly snapshot
-            insert_rows("eqp_current_status_snapshot", rows)
+            log.info(f"[ees] {len(rows)} rows fetched for today")
+            insert_rows("eqp_detailed_history", rows)
         else:
-            log.warning("[ees] No equipment status rows returned from EES")
+            log.warning("[ees] No rows returned from EES (today)")
+
+        # ── Snapshot: yesterday's data, only on run #3+ ───────────────────────
+        run_count = _run_counter.get(_today_str(), 1)
+        if not offline:
+            if run_count >= 3:
+                log.info(f"[ees snapshot] Run #{run_count} — fetching yesterday's data...")
+                snap_rows = fetch_ees_history_yesterday()
+                if snap_rows:
+                    insert_rows("eqp_detailed_history_snapshot", snap_rows)
+                    log.info(f"[ees snapshot] {len(snap_rows)} rows saved for yesterday")
+                else:
+                    log.info("[ees snapshot] 0 rows for yesterday — skipping snapshot")
+            else:
+                log.info(f"[ees snapshot] Run #{run_count} — waiting for run #3 before snapshot")
 
     except Exception as e:
         log.error(f"[ees] Job failed: {e}")
@@ -340,11 +350,11 @@ if __name__ == "__main__":
         run_job(offline=offline_mode)
         run_ees_job(offline=offline_mode)
     else:
-        log.info(f"Scheduler started — MES reports every {INTERVAL} min, EES current status every {EES_INTERVAL} sec.")
+        log.info(f"Scheduler started — running every {INTERVAL} minutes.")
         run_job()
         run_ees_job()
         schedule.every(INTERVAL).minutes.do(run_job)
-        schedule.every(EES_INTERVAL).seconds.do(run_ees_job)
+        schedule.every(INTERVAL).minutes.do(run_ees_job)
         while True:
             schedule.run_pending()
-            time.sleep(1)
+            time.sleep(30)

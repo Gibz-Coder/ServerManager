@@ -143,8 +143,8 @@ class InAppSchedulerThread(threading.Thread):
             except Exception as e:
                 logger.error(f"Error in scheduler check loop: {str(e)}")
             
-            # Wait 2 seconds between checks to support sub-minute intervals (e.g. 30s EES scraper)
-            self.stop_event.wait(2)
+            # Wait 30 seconds between checks (responsive enough for minute-level schedules)
+            self.stop_event.wait(30)
             
         logger.info("In-App Local Scheduler Thread stopped.")
 
@@ -193,7 +193,7 @@ class InAppSchedulerThread(threading.Thread):
                         logger.error(f"Error in background scheduled cleanup: {e}")
                 threading.Thread(target=run_cleanup_async, daemon=True).start()
 
-        # 3. Check MES Scraper Schedule (Reports: WIP, Monthly Plan, Process Result/Trackout)
+        # 3. Check MES Scraper Schedule (run 24/7 inside the app if enabled)
         mes_settings = config.get("mes_scraper_settings", {})
         if mes_settings.get("schedule_enabled"):
             interval_min = mes_settings.get("interval_minutes", 5)
@@ -210,11 +210,11 @@ class InAppSchedulerThread(threading.Thread):
                 due = True
             else:
                 elapsed = (now - mes_last_run).total_seconds()
-                if elapsed >= (interval_min * 60) - 2:  # 2-second tolerance
+                if elapsed >= (interval_min * 60) - 5:  # 5-second tolerance
                     due = True
                     
             if due:
-                logger.info(f"Scheduled MES Reports job is due (every {interval_min} min). Launching execution...")
+                logger.info("Scheduled MES Scraper job is due. Launching execution...")
                 save_last_run("mes_scraper", now.strftime("%Y-%m-%d %H:%M:%S"))
                 
                 offline_mode = mes_settings.get("offline_mode", True)
@@ -223,44 +223,12 @@ class InAppSchedulerThread(threading.Thread):
                     try:
                         success, msg = run_mes_scraper_task(offline=offline_mode)
                         if success:
-                            logger.info(f"Scheduled MES Reports succeeded: {msg}")
+                            logger.info(f"Scheduled MES Scraper succeeded: {msg}")
                         else:
-                            logger.error(f"Scheduled MES Reports failed: {msg}")
+                            logger.error(f"Scheduled MES Scraper failed: {msg}")
                     except Exception as e:
-                        logger.error(f"Error in background scheduled MES Reports: {e}")
+                        logger.error(f"Error in background scheduled MES Scraper: {e}")
                 threading.Thread(target=run_mes_async, daemon=True).start()
-
-        # 4. Check EES Current Status Scraper Schedule (Realtime machine status, e.g. every 30 seconds)
-        if mes_settings.get("schedule_enabled"):
-            ees_interval_sec = mes_settings.get("ees_interval_seconds", 30)
-            ees_last_run_str = last_runs.get("ees_scraper", "")
-            ees_last_run = None
-            if ees_last_run_str:
-                try:
-                    ees_last_run = datetime.strptime(ees_last_run_str, "%Y-%m-%d %H:%M:%S")
-                except Exception:
-                    pass
-            
-            due_ees = False
-            if not ees_last_run:
-                due_ees = True
-            else:
-                elapsed = (now - ees_last_run).total_seconds()
-                if elapsed >= ees_interval_sec - 1:  # 1-second tolerance
-                    due_ees = True
-                    
-            if due_ees:
-                save_last_run("ees_scraper", now.strftime("%Y-%m-%d %H:%M:%S"))
-                offline_mode = mes_settings.get("offline_mode", True)
-                
-                def run_ees_async():
-                    try:
-                        success, msg = run_ees_scraper_task(offline=offline_mode)
-                        if not success:
-                            logger.error(f"Scheduled EES Current Status failed: {msg}")
-                    except Exception as e:
-                        logger.error(f"Error in background scheduled EES Current Status: {e}")
-                threading.Thread(target=run_ees_async, daemon=True).start()
 
     def is_task_due(self, task_type: str, schedule: dict, last_run_str: str, now: datetime) -> bool:
         """Determines if a task should be run based on schedule type, time, and last execution date."""
@@ -432,47 +400,10 @@ def run_cleanup_task(active_profile: dict, retention_rules: list[dict]) -> tuple
 
 
 _mes_scraper_lock = threading.Lock()
-_ees_scraper_lock = threading.Lock()
-
-def run_ees_scraper_task(offline: bool = False) -> tuple[bool, str]:
-    """
-    Executes the EES Equipment Current Status scraping job (real-time 30s cycle).
-    Thread-safe lock prevents concurrent scraping runs.
-    """
-    if not _ees_scraper_lock.acquire(blocking=False):
-        return False, "EES Scraper job is already running."
-        
-    try:
-        import sys
-        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        mes_dir = os.path.join(project_root, "mes_scraper")
-        if mes_dir not in sys.path:
-            sys.path.insert(0, mes_dir)
-            
-        from src.utils.config import sync_mes_dotenv, load_config
-        config = load_config()
-        sync_mes_dotenv(config)
-        
-        from dotenv import load_dotenv
-        dotenv_path = os.path.join(mes_dir, ".env")
-        load_dotenv(dotenv_path, override=True)
-        
-        import importlib
-        mes_main = importlib.import_module("main")
-        
-        mes_main.run_ees_job(offline=offline)
-        return True, "EES Current Status scrape completed successfully."
-    except Exception as e:
-        import traceback
-        err_detail = traceback.format_exc()
-        logger.error(f"EES Current Status scraper run failed: {str(e)}\n{err_detail}")
-        return False, f"EES Scraper failed: {str(e)}"
-    finally:
-        _ees_scraper_lock.release()
 
 def run_mes_scraper_task(offline: bool = False) -> tuple[bool, str]:
     """
-    Executes the MES reports scraping job.
+    Executes the MES scraping job (both report scraper and EES scraper).
     Thread-safe lock prevents concurrent scraping runs.
     """
     if not _mes_scraper_lock.acquire(blocking=False):
@@ -515,13 +446,16 @@ def run_mes_scraper_task(offline: bool = False) -> tuple[bool, str]:
         logger.info(f"Starting MES reports scraping (Offline Mode: {offline})...")
         mes_main.run_job(offline=offline)
         
+        logger.info(f"Starting EES history scraping (Offline Mode: {offline})...")
+        mes_main.run_ees_job(offline=offline)
+        
         from src.connection import MySQLConnectionManager
         from src.utils.config import get_active_profile
         profile = get_active_profile(config)
         if profile:
             mgr = MySQLConnectionManager(profile)
             db_name = profile.get("database", "mes_data")
-            for tbl in ("wip_status", "monthly_plan", "process_result", "process_trackout"):
+            for tbl in ("wip_status", "monthly_plan", "process_result", "process_trackout", "eqp_detailed_history"):
                 try:
                     conn = mgr.get_connection()
                     with conn.cursor() as cursor:
@@ -532,7 +466,7 @@ def run_mes_scraper_task(offline: bool = False) -> tuple[bool, str]:
                 except Exception as ex:
                     logger.debug(f"Failed to query row count for table {tbl}: {ex}")
                     
-        return True, "MES reports scraping completed successfully."
+        return True, "Scraping job completed successfully."
     except Exception as e:
         import traceback
         err_detail = traceback.format_exc()

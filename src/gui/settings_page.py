@@ -331,13 +331,7 @@ class SettingsPage(QWidget):
         self.spin_mes_interval.setRange(1, 1440)
         self.spin_mes_interval.setValue(5)
         self.spin_mes_interval.setSuffix(" minutes")
-        form_layout.addRow("MES Reports Interval:", self.spin_mes_interval)
-        
-        self.spin_ees_interval = QSpinBox()
-        self.spin_ees_interval.setRange(5, 3600)
-        self.spin_ees_interval.setValue(30)
-        self.spin_ees_interval.setSuffix(" seconds")
-        form_layout.addRow("EES Current Status Interval:", self.spin_ees_interval)
+        form_layout.addRow("Scrape Interval:", self.spin_mes_interval)
         
         btn_save_mes = QPushButton("Save & Sync Scraper Settings")
         btn_save_mes.setObjectName("PrimaryButton")
@@ -399,7 +393,6 @@ class SettingsPage(QWidget):
         self.txt_ees_conn.setText(mes_settings.get("ees_connect_string", "EES"))
         self.txt_local_ip.setText(mes_settings.get("local_ip", ""))
         self.spin_mes_interval.setValue(mes_settings.get("interval_minutes", 5))
-        self.spin_ees_interval.setValue(mes_settings.get("ees_interval_seconds", 30))
         
         # Appearance
         saved_theme = config.get("theme", "Dark Mode")
@@ -702,7 +695,6 @@ class SettingsPage(QWidget):
         mes_settings["ees_connect_string"] = self.txt_ees_conn.text().strip()
         mes_settings["local_ip"] = self.txt_local_ip.text().strip()
         mes_settings["interval_minutes"] = self.spin_mes_interval.value()
-        mes_settings["ees_interval_seconds"] = self.spin_ees_interval.value()
         
         config["mes_scraper_settings"] = mes_settings
         save_config(config)

@@ -8,10 +8,8 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from collections import Counter
 from src.cleanup import MySQLCleanupManager
 from src.backup import MySQLBackupManager
-from mes_scraper.ees_scraper import fetch_ees_current_status
 
 class TestServerManagerLogic(unittest.TestCase):
     def setUp(self):
@@ -153,25 +151,6 @@ class TestServerManagerLogic(unittest.TestCase):
         # Test case 3: Task ran 2 hours ago (should NOT be due)
         last_run_str = "2026-06-30 10:30:00"
         self.assertFalse(scheduler.is_task_due("backup", schedule, last_run_str, datetime(2026, 6, 30, 12, 0, 0)))
-
-    def test_ees_current_status_offline_parsing(self):
-        """Test parsing of captured EES Equipment Current Status binary response."""
-        rows = fetch_ees_current_status(offline=True)
-        self.assertEqual(len(rows), 287)
-
-        # Check required columns exist
-        first = rows[0]
-        self.assertEqual(first["equipment_code"], "E1802217")
-        self.assertEqual(first["segment_name"], "Visual")
-        self.assertEqual(first["state_name"], "IDLE(Signal)")
-        self.assertEqual(first["equipment_ip"], "107.105.235.162")
-
-        # Verify state distribution matches UI screenshot
-        states = Counter(r["state_name"] for r in rows)
-        self.assertEqual(states["RUN"], 143)
-        self.assertEqual(states["Waiting for WIP"], 121)
-        self.assertEqual(states["IDLE(Signal)"], 7)
-        self.assertEqual(states["Work Preparation"], 6)
 
 if __name__ == '__main__':
     unittest.main()

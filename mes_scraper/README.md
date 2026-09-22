@@ -8,13 +8,12 @@ and stores data in MySQL.
 
 ## Currently Scraped Reports
 
-| Report | Table | Snapshot Table | Port | Protocol/Method | Interval |
-|---|---|---|---|---|---|
-| RPT40281 — WIP Status | `wip_status` | `wip_status_snapshot` | 8080 | HTTP POST (XPlatform binary) | Every run |
-| RPT40496 — Monthly Plan | `monthly_plan` | `monthly_plan_snapshot` | 8080 | HTTP POST (XPlatform binary) | Every run |
-| RPT40120 — Process Result (Output) | `process_result` | `process_result_snapshot` | 8081 | HTTP POST (XPlatform binary) | Every run |
-| RPT40120 — Process Trackout | `process_trackout` | `process_trackout_snapshot` | 8081 | HTTP POST (XPlatform binary) | Every run |
-| EPT0103 — Equipment Current Status | `eqp_current_status` | `eqp_current_status_snapshot` | 8003 | WCF net.tcp (binary encoding) | Every run (Hourly snapshot) |
+| Report | Table | Snapshot Table | Port | Interval |
+|---|---|---|---|---|
+| RPT40281 — WIP Status | `wip_status` | `wip_status_snapshot` | 8080 | Every run |
+| RPT40496 — Monthly Plan | `monthly_plan` | `monthly_plan_snapshot` | 8080 | Every run |
+| RPT40120 — Process Result (Output) | `process_result` | `process_result_snapshot` | 8081 | Every run |
+| RPT40120 — Process Trackout | `process_trackout` | `process_trackout_snapshot` | 8081 | Every run |
 
 ---
 
@@ -30,29 +29,20 @@ Response format:
   ff ad [zlib-compressed XPlatform binary]
        └─ fe 10 blocks (datasets)
             └─ column definitions + row data
-
-EES Service
-  │
-  └─ TCP :8003 → ExecQuery (pr_EPT_EquipCurrentStatus)
 ```
 
 ### Key Files
 
 ```
 mes_scraper/
-  main.py                            Entry point — scheduler, job runner, snapshot logic
-  scraper_direct.py                  HTTP replay, XP binary parser, column maps, patch functions
-  ees_scraper.py                     WCF net.tcp client for scraping Equipment Current Status (EPT0103)
-  db.py                              MySQL table definitions and INSERT logic
-  xp_requests.json                   Captured POST bodies for each RPT report
-  ees_wcf_current_status_request.bin Captured WCF binary template for EES requests
-  debug_ees_current_status.bin       Offline response binary for EES Current Status
-  .env                               Credentials and config (synced from DB Orchestrator config)
-  proxy_intercept.py                 Proxy interceptor (for port 8080 reports only)
-  backfill_snapshots.py              Utility to backfill historical snapshot data for target date ranges
-  repair_equipment_names.py          Repair utility to fix garbage values in equipment_name columns
+  main.py              Entry point — scheduler, job runner, snapshot logic
+  scraper_direct.py    HTTP replay, XP binary parser, column maps, patch functions
+  db.py                MySQL table definitions and INSERT logic
+  xp_requests.json     Captured POST bodies for each report
+  .env                 Credentials and config
+  proxy_intercept.py   Proxy interceptor (for port 8080 reports only)
+  recapture_rpt40120.py  Extract RPT40120 POST bodies from Wireshark pcapng
 ```
-
 
 ---
 
@@ -108,12 +98,13 @@ Rows are inserted into MySQL.
 |---|---|---|
 | Realtime | Truncated and refilled every run | Today 00:00 → Tomorrow 00:00 |
 | Snapshot (RPT40281/40496) | Insert once per day, never deleted | Same as realtime |
-| Snapshot (RPT40120 & EES) | Insert on 3rd run of the day, never deleted | Yesterday 00:00 → Today 00:00 |
+| Snapshot (RPT40120) | Insert on 3rd run of the day, never deleted | Yesterday 00:00 → Today 00:00 |
 
-**Why RPT40120 & EES snapshots use yesterday's data:**
-RPT40120 is a production result report and EES tracks status transitions. Both snapshot runs are designed to capture the previous day's total production and events.
-The 3rd-run delay (~10 min after midnight in a 5-minute interval cycle) accounts for the 10-15 min
-MES reflection delay before all logs/lots appear in the systems.
+**Why RPT40120 snapshots use yesterday's data:**
+RPT40120 is a production result report — it captures completed lots.
+The snapshot should represent the previous day's total production.
+The 3rd-run delay (~10 min after midnight) accounts for the 10-15 min
+MES reflection delay before all lots appear in the system.
 
 ---
 
@@ -431,13 +422,10 @@ SCRAPE_INTERVAL_MINUTES=5
 # First time setup — create all tables
 python main.py --reset
 
-# Run once (online sync test)
+# Run once (test)
 python main.py --once
 
-# Run once (offline mock replay test)
-python main.py --once --offline
-
-# Run scheduler standalone (every 5 minutes)
+# Run scheduler (every 5 minutes)
 python main.py
 
 # Drop only RPT40120 tables and recreate
@@ -450,22 +438,6 @@ for t in ['process_result','process_result_snapshot','process_trackout','process
 conn.commit(); cur.close(); conn.close()
 init_db(force=False)
 "
-```
-
-### Historical Backfills and Repair Utilities
-
-```powershell
-# Backfill snapshot tables for a range (e.g. Jan 1 to Apr 28, 2026)
-python backfill_snapshots.py --from 2026-01-01 --to 2026-04-28
-
-# Backfill only EES data
-python backfill_snapshots.py --ees-only --from 2026-01-01 --to 2026-04-28
-
-# Clean/repair corrupted equipment names in database (caches clean names and corrects garbage ones)
-python repair_equipment_names.py
-
-# Run repair dry-run to preview counts of corrupted entries
-python repair_equipment_names.py --dry-run
 ```
 
 ---
