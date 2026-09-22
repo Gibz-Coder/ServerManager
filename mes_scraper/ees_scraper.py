@@ -661,9 +661,8 @@ EES_CURRENT_STATUS_COL_MAP = {
     "FactoryName":          "factory_name",
     "FacilityID":           "facility_id",
     "StartTime":            "start_time",
-    "NewState":             "state_code",
+    "NewState":             "present_status_code",
     "EquipmentStateName":   "state_name",
-    "Signal":               "signal_status",
     "LotID":                "lot_id",
     "ProductID":            "product_id",
     "OperatorID":           "operator_id",
@@ -753,6 +752,10 @@ def remap_ees_current_status_row(row: dict) -> dict:
     for k, v in row.items():
         if k in EES_CURRENT_STATUS_COL_MAP:
             remapped[EES_CURRENT_STATUS_COL_MAP[k]] = v
+
+    # Provide state_code alias for backwards compatibility
+    if "present_status_code" in remapped:
+        remapped["state_code"] = remapped["present_status_code"]
 
     # Clean equipment_name or recover from total_display_sequence
     eq_name = remapped.get("equipment_name", "") or ""

@@ -963,20 +963,19 @@ def init_db(force: bool = False):
             id                      INT AUTO_INCREMENT PRIMARY KEY,
             scraped_at              DATETIME NOT NULL,
             row_index               INT,
-            equipment_code          VARCHAR(64),
-            equipment_name          VARCHAR(256),
+            factory_name            VARCHAR(32),
             segment_id              VARCHAR(64),
             segment_name            VARCHAR(64),
             equipment_class_id      VARCHAR(64),
             equipment_class_name    VARCHAR(128),
-            factory_name            VARCHAR(64),
-            facility_id             VARCHAR(64),
+            equipment_code          VARCHAR(64),
+            equipment_name          VARCHAR(256),
             start_time              VARCHAR(32),
-            state_code              VARCHAR(32),
+            present_status_code     VARCHAR(32),
             state_name              VARCHAR(128),
-            signal_status           VARCHAR(64),
             lot_id                  VARCHAR(64),
             product_id              VARCHAR(128),
+            facility_id             VARCHAR(64),
             operator_id             VARCHAR(256),
             recipe_name             VARCHAR(128),
             is_usable               VARCHAR(32),
@@ -986,8 +985,10 @@ def init_db(force: bool = False):
             equipment_type          VARCHAR(64),
             INDEX idx_scraped_at     (scraped_at),
             INDEX idx_equipment_code (equipment_code),
+            INDEX idx_start_time     (start_time),
             INDEX idx_state_name     (state_name),
-            INDEX idx_lot_id         (lot_id)
+            INDEX idx_lot_id         (lot_id),
+            INDEX idx_product_id     (product_id)
         ) ROW_FORMAT=DYNAMIC
     """)
 
@@ -2345,13 +2346,12 @@ def insert_rows(table_name: str, rows: list[dict]):
 
             cols = [
                 "scraped_at", "row_index",
-                "equipment_code", "equipment_name",
-                "segment_id", "segment_name",
+                "factory_name", "segment_id", "segment_name",
                 "equipment_class_id", "equipment_class_name",
-                "factory_name", "facility_id",
-                "start_time", "state_code", "state_name", "signal_status",
-                "lot_id", "product_id", "operator_id",
-                "recipe_name", "is_usable",
+                "equipment_code", "equipment_name",
+                "start_time", "present_status_code", "state_name",
+                "lot_id", "product_id", "facility_id",
+                "operator_id", "recipe_name", "is_usable",
                 "equipment_ip", "tc_master_ip",
                 "total_display_sequence", "equipment_type",
             ]
@@ -2361,22 +2361,22 @@ def insert_rows(table_name: str, rows: list[dict]):
 
             data = []
             for i, row in enumerate(rows):
+                status_code = row.get("present_status_code") or row.get("state_code") or row.get("NewState")
                 data.append((
                     now, i,
-                    _s(row, "equipment_code", 64),
-                    _s(row, "equipment_name", 256),
+                    _s(row, "factory_name", 32),
                     _s(row, "segment_id", 64),
                     _s(row, "segment_name", 64),
                     _s(row, "equipment_class_id", 64),
                     _s(row, "equipment_class_name", 128),
-                    _s(row, "factory_name", 64),
-                    _s(row, "facility_id", 64),
+                    _s(row, "equipment_code", 64),
+                    _s(row, "equipment_name", 256),
                     _s(row, "start_time", 32),
-                    _s(row, "state_code", 32),
+                    _safe_str(status_code, 32),
                     _s(row, "state_name", 128),
-                    _s(row, "signal_status", 64),
                     _s(row, "lot_id", 64),
                     _s(row, "product_id", 128),
+                    _s(row, "facility_id", 64),
                     _s(row, "operator_id", 256),
                     _s(row, "recipe_name", 128),
                     _s(row, "is_usable", 32),
