@@ -51,6 +51,8 @@ EES_CONNECT_STRING = os.getenv("EES_CONNECT_STRING", "EES")
 _HERE = os.path.dirname(__file__)
 CAPTURED_REQUEST_FILE = os.path.join(_HERE, "ees_wcf_request_full.bin")
 DEBUG_BIN = os.path.join(_HERE, "debug_ees_history.bin")
+CAPTURED_CURRENT_STATUS_REQUEST_FILE = os.path.join(_HERE, "ees_wcf_current_status_request.bin")
+DEBUG_CURRENT_STATUS_BIN = os.path.join(_HERE, "debug_ees_current_status.bin")
 
 # ── WCF Binary Encoding Helpers ───────────────────────────────────────────────
 
@@ -628,6 +630,181 @@ def _fetch_ees(offline: bool = False,
     rows = filter_ees_rows(rows)
     log.info(f"[ees] {len(rows)} rows after clean+filter")
 
+    return rows
+
+
+# ── Equipment Current Status (EPT0103) ────────────────────────────────────────
+
+def patch_ees_current_status_request(template: bytes) -> bytes:
+    """Patch the captured WCF binary request for Equipment Current Status with a fresh GUID."""
+    data = template
+    old_guids = [
+        b"2e8bb396-366b-4605-af05-619c6d9be418",
+        b"0a1bacad-b5b4-4f01-ad7b-598cef3e8ce5",
+    ]
+    new_guid = str(uuid.uuid4()).encode("ascii")
+    for og in old_guids:
+        if og in data:
+            data = data.replace(og, new_guid, 1)
+            log.info(f"  [ees status patch] GUID: {og.decode()} -> {new_guid.decode()}")
+            break
+    return data
+
+
+EES_CURRENT_STATUS_COL_MAP = {
+    "EquipmentID":          "equipment_code",
+    "EquipmentName":        "equipment_name",
+    "SegmentID":            "segment_id",
+    "SegmentName":          "segment_name",
+    "EquipmentClassID":     "equipment_class_id",
+    "EquipmentClassName":   "equipment_class_name",
+    "FactoryName":          "factory_name",
+    "FacilityID":           "facility_id",
+    "StartTime":            "start_time",
+    "NewState":             "state_code",
+    "EquipmentStateName":   "state_name",
+    "Signal":               "signal_status",
+    "LotID":                "lot_id",
+    "ProductID":            "product_id",
+    "OperatorID":           "operator_id",
+    "RecipeName":           "recipe_name",
+    "ISUSABLE":             "is_usable",
+    "EquipmentIP":          "equipment_ip",
+    "TCMasterIP":           "tc_master_ip",
+    "TotalDisplaySequence": "total_display_sequence",
+    "EquipmentType":        "equipment_type",
+}
+
+
+def parse_ees_current_status_response(raw: bytes) -> list[dict]:
+    """
+    Parse WCF binary response for EPT0103 Equipment Current Status (pr_EPT_EquipCurrentStatus).
+    Supports multi-byte dictionary prefixes before the string value record.
+    """
+    if not raw:
+        log.warning("[ees status parse] Empty response")
+        return []
+
+    import re as _re
+    field_names = [
+        'rowOrder', 'FactoryName', 'SegmentID', 'SegmentName',
+        'EquipmentClassID', 'EquipmentClassName',
+        'EquipmentID', 'EquipmentName',
+        'StartTime', 'NewState', 'EquipmentStateName', 'Signal',
+        'LotID', 'ProductID', 'FacilityID', 'OperatorID',
+        'RecipeName', 'ISUSABLE', 'EquipmentIP', 'TCMasterIP',
+        'TotalDisplaySequence', 'EquipmentType'
+    ]
+
+    n = len(raw)
+    all_fields: list[tuple[int, str, str]] = []
+
+    for fname in field_names:
+        fb = fname.encode('utf-8')
+        fname_len = len(fb)
+        for m in _re.finditer(_re.escape(fb), raw):
+            pos = m.start()
+            if pos == 0 or raw[pos - 1] != fname_len:
+                continue
+
+            found_val = None
+            for offset in range(pos + fname_len, min(pos + fname_len + 5, n)):
+                vt = raw[offset]
+                if vt == 0x40:
+                    found_val = ''
+                    break
+                elif vt in (0x98, 0x99):
+                    if offset + 1 < n:
+                        vlen = raw[offset + 1]
+                        if offset + 2 + vlen <= n:
+                            found_val = raw[offset + 2 : offset + 2 + vlen].decode('utf-8', 'replace')
+                            break
+                elif vt in (0x9a, 0x9b):
+                    if offset + 2 < n:
+                        vlen = int.from_bytes(raw[offset + 1 : offset + 3], 'little')
+                        if offset + 3 + vlen <= n:
+                            found_val = raw[offset + 3 : offset + 3 + vlen].decode('utf-8', 'replace')
+                            break
+
+            if found_val is not None:
+                all_fields.append((pos, fname, found_val))
+
+    all_fields.sort(key=lambda x: x[0])
+
+    rows: list[dict] = []
+    current_row: dict = {}
+    for pos, fname, val in all_fields:
+        if fname == 'rowOrder':
+            if current_row and 'EquipmentID' in current_row:
+                rows.append(current_row)
+            current_row = {'rowOrder': val}
+        else:
+            current_row[fname] = val
+    if current_row and 'EquipmentID' in current_row:
+        rows.append(current_row)
+
+    log.info(f"[ees status parse] Extracted {len(rows)} raw rows")
+    return rows
+
+
+def remap_ees_current_status_row(row: dict) -> dict:
+    """Map EPT0103 field names to DB column names and ensure clean equipment_name."""
+    remapped = {}
+    for k, v in row.items():
+        if k in EES_CURRENT_STATUS_COL_MAP:
+            remapped[EES_CURRENT_STATUS_COL_MAP[k]] = v
+
+    # Clean equipment_name or recover from total_display_sequence
+    eq_name = remapped.get("equipment_name", "") or ""
+    cleaned = _clean_equipment_name(eq_name)
+    if not cleaned:
+        seq = remapped.get("total_display_sequence", "") or ""
+        import re as _re
+        m = _re.search(r'(VI\d{3}_[A-Za-z0-9_\-\(\)]+|MAVI\d{2}_[A-Za-z0-9_\-\(\)]+)', seq)
+        if m:
+            cleaned = m.group(1).strip()
+    remapped["equipment_name"] = cleaned if cleaned else None
+    return remapped
+
+
+def fetch_ees_current_status(offline: bool = False) -> list[dict]:
+    """
+    Fetch EES Equipment Current Status (EPT0103).
+    Returns a list of dicts mapped to eqp_current_status DB columns.
+    """
+    if offline:
+        if not os.path.exists(DEBUG_CURRENT_STATUS_BIN):
+            log.warning(f"[ees status] No debug bin at {DEBUG_CURRENT_STATUS_BIN}")
+            return []
+        with open(DEBUG_CURRENT_STATUS_BIN, "rb") as f:
+            raw = f.read()
+        log.info(f"[ees status] Offline mode: parsing {len(raw)} bytes from {DEBUG_CURRENT_STATUS_BIN}")
+    else:
+        if not os.path.exists(CAPTURED_CURRENT_STATUS_REQUEST_FILE):
+            log.error(f"[ees status] Captured request not found: {CAPTURED_CURRENT_STATUS_REQUEST_FILE}")
+            return []
+        with open(CAPTURED_CURRENT_STATUS_REQUEST_FILE, "rb") as f:
+            template = f.read()
+
+        request = patch_ees_current_status_request(template)
+        try:
+            raw = send_wcf_request(EES_HOST, EES_PORT, request)
+        except (socket.error, OSError) as e:
+            log.error(f"[ees status] TCP connection failed: {e}")
+            return []
+
+        with open(DEBUG_CURRENT_STATUS_BIN, "wb") as f:
+            f.write(raw)
+        log.info(f"[ees status] Raw response saved -> {DEBUG_CURRENT_STATUS_BIN}")
+
+    if not raw:
+        log.warning("[ees status] Empty response")
+        return []
+
+    raw_rows = parse_ees_current_status_response(raw)
+    rows = [remap_ees_current_status_row(r) for r in raw_rows]
+    rows = [r for r in rows if r.get("equipment_code")]
+    log.info(f"[ees status] {len(rows)} rows after clean & filter")
     return rows
 
 

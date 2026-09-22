@@ -22,7 +22,10 @@ from scraper_direct import (
     _patch_rpt40120_post_body, parse_xplatform_binary,
     get_session, load_captured_requests,
 )
-from ees_scraper import fetch_ees_history, fetch_ees_history_yesterday
+from ees_scraper import (
+    fetch_ees_history, fetch_ees_history_yesterday,
+    fetch_ees_current_status,
+)
 
 load_dotenv()
 
@@ -304,24 +307,25 @@ def run_job(offline: bool = False):
 
 def run_ees_job(offline: bool = False):
     """
-    Fetch EES Equipment Detailed History and store in DB.
+    Fetch EES Equipment Detailed History AND Equipment Current Status and store in DB.
 
     Mirrors RPT40120 snapshot logic:
-      - Realtime table (eqp_detailed_history):  truncated + refilled every run with TODAY's data
-      - Snapshot table (eqp_detailed_history_snapshot): inserted once per day on run #3+
-        using YESTERDAY's data, allowing ~10-15 min EES reflection delay after midnight
+      - Realtime detailed history (eqp_detailed_history): truncated + refilled every run with TODAY's data
+      - Snapshot detailed history (eqp_detailed_history_snapshot): inserted once per day on run #3+
+      - Realtime current status (eqp_current_status): truncated + refilled every run with latest machine states
+      - Snapshot current status (eqp_current_status_snapshot): hourly historical snapshot
     """
     log.info("=== Starting EES scrape job ===")
     try:
-        # ── Realtime: today's data ────────────────────────────────────────────
+        # ── 1. Detailed History: today's data ─────────────────────────────────
         rows = fetch_ees_history(offline=offline)
         if rows:
-            log.info(f"[ees] {len(rows)} rows fetched for today")
+            log.info(f"[ees history] {len(rows)} rows fetched for today")
             insert_rows("eqp_detailed_history", rows)
         else:
-            log.warning("[ees] No rows returned from EES (today)")
+            log.warning("[ees history] No rows returned from EES (today)")
 
-        # ── Snapshot: yesterday's data, only on run #3+ ───────────────────────
+        # ── 2. Detailed History Snapshot: yesterday's data, only on run #3+ ───
         run_count = _run_counter.get(_today_str(), 1)
         if not offline:
             if run_count >= 3:
@@ -334,6 +338,15 @@ def run_ees_job(offline: bool = False):
                     log.info("[ees snapshot] 0 rows for yesterday — skipping snapshot")
             else:
                 log.info(f"[ees snapshot] Run #{run_count} — waiting for run #3 before snapshot")
+
+        # ── 3. Equipment Current Status (EPT0103) ─────────────────────────────
+        status_rows = fetch_ees_current_status(offline=offline)
+        if status_rows:
+            log.info(f"[ees status] {len(status_rows)} equipment current status rows fetched")
+            insert_rows("eqp_current_status", status_rows)
+            insert_rows("eqp_current_status_snapshot", status_rows)
+        else:
+            log.warning("[ees status] No current status rows returned from EES")
 
     except Exception as e:
         log.error(f"[ees] Job failed: {e}")

@@ -455,7 +455,7 @@ def run_mes_scraper_task(offline: bool = False) -> tuple[bool, str]:
         if profile:
             mgr = MySQLConnectionManager(profile)
             db_name = profile.get("database", "mes_data")
-            for tbl in ("wip_status", "monthly_plan", "process_result", "process_trackout", "eqp_detailed_history"):
+            for tbl in ("wip_status", "monthly_plan", "process_result", "process_trackout", "eqp_detailed_history", "eqp_current_status"):
                 try:
                     conn = mgr.get_connection()
                     with conn.cursor() as cursor:

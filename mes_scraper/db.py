@@ -36,6 +36,8 @@ def init_db(force: bool = False):
         cursor.execute("DROP TABLE IF EXISTS wip_status_snapshot")
         cursor.execute("DROP TABLE IF EXISTS monthly_plan")
         cursor.execute("DROP TABLE IF EXISTS monthly_plan_snapshot")
+        cursor.execute("DROP TABLE IF EXISTS eqp_current_status")
+        cursor.execute("DROP TABLE IF EXISTS eqp_current_status_snapshot")
         print("[DB] Dropped existing tables.")
 
     cursor.execute("SET SESSION innodb_strict_mode=OFF")
@@ -952,6 +954,46 @@ def init_db(force: bool = False):
     # eqp_detailed_history_snapshot — one snapshot per day, never deleted
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS eqp_detailed_history_snapshot LIKE eqp_detailed_history
+    """)
+
+    # ── EES Equipment Current Status (EPT0103) ───────────────────────────────
+    # Source: pr_EPT_EquipCurrentStatus via WCF net.tcp
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS eqp_current_status (
+            id                      INT AUTO_INCREMENT PRIMARY KEY,
+            scraped_at              DATETIME NOT NULL,
+            row_index               INT,
+            equipment_code          VARCHAR(64),
+            equipment_name          VARCHAR(256),
+            segment_id              VARCHAR(64),
+            segment_name            VARCHAR(64),
+            equipment_class_id      VARCHAR(64),
+            equipment_class_name    VARCHAR(128),
+            factory_name            VARCHAR(64),
+            facility_id             VARCHAR(64),
+            start_time              VARCHAR(32),
+            state_code              VARCHAR(32),
+            state_name              VARCHAR(128),
+            signal_status           VARCHAR(64),
+            lot_id                  VARCHAR(64),
+            product_id              VARCHAR(128),
+            operator_id             VARCHAR(256),
+            recipe_name             VARCHAR(128),
+            is_usable               VARCHAR(32),
+            equipment_ip            VARCHAR(64),
+            tc_master_ip            VARCHAR(64),
+            total_display_sequence  VARCHAR(256),
+            equipment_type          VARCHAR(64),
+            INDEX idx_scraped_at     (scraped_at),
+            INDEX idx_equipment_code (equipment_code),
+            INDEX idx_state_name     (state_name),
+            INDEX idx_lot_id         (lot_id)
+        ) ROW_FORMAT=DYNAMIC
+    """)
+
+    # eqp_current_status_snapshot — hourly snapshot
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS eqp_current_status_snapshot LIKE eqp_current_status
     """)
 
     conn.commit()
@@ -2277,6 +2319,76 @@ def insert_rows(table_name: str, rows: list[dict]):
             cursor.executemany(sql, data)
             conn.commit()
             label = "realtime" if table_name == "eqp_detailed_history" else "daily snapshot"
+            print(f"[DB] {table_name}: inserted {cursor.rowcount} rows ({label}) at {now}.")
+            cursor.close()
+            conn.close()
+            return
+
+        # ── EES Equipment Current Status ──────────────────────────────────────
+        if table_name in ("eqp_current_status", "eqp_current_status_snapshot"):
+            if table_name == "eqp_current_status":
+                cursor.execute("TRUNCATE TABLE eqp_current_status")
+                conn.commit()
+                print("[DB] eqp_current_status cleared (TRUNCATE).")
+            else:
+                # Hourly snapshot
+                hour_start = datetime.now(MANILA_TZ).strftime("%Y-%m-%d %H:00:00")
+                cursor.execute(
+                    "SELECT COUNT(*) FROM eqp_current_status_snapshot WHERE scraped_at >= %s",
+                    (hour_start,)
+                )
+                if cursor.fetchone()[0] > 0:
+                    print("[DB] eqp_current_status_snapshot: this hour already has a snapshot — skipping.")
+                    cursor.close()
+                    conn.close()
+                    return
+
+            cols = [
+                "scraped_at", "row_index",
+                "equipment_code", "equipment_name",
+                "segment_id", "segment_name",
+                "equipment_class_id", "equipment_class_name",
+                "factory_name", "facility_id",
+                "start_time", "state_code", "state_name", "signal_status",
+                "lot_id", "product_id", "operator_id",
+                "recipe_name", "is_usable",
+                "equipment_ip", "tc_master_ip",
+                "total_display_sequence", "equipment_type",
+            ]
+            placeholders = ",".join(["%s"] * len(cols))
+            quoted_cols = ",".join(f"`{c}`" for c in cols)
+            sql = f"INSERT INTO {table_name} ({quoted_cols}) VALUES ({placeholders})"
+
+            data = []
+            for i, row in enumerate(rows):
+                data.append((
+                    now, i,
+                    _s(row, "equipment_code", 64),
+                    _s(row, "equipment_name", 256),
+                    _s(row, "segment_id", 64),
+                    _s(row, "segment_name", 64),
+                    _s(row, "equipment_class_id", 64),
+                    _s(row, "equipment_class_name", 128),
+                    _s(row, "factory_name", 64),
+                    _s(row, "facility_id", 64),
+                    _s(row, "start_time", 32),
+                    _s(row, "state_code", 32),
+                    _s(row, "state_name", 128),
+                    _s(row, "signal_status", 64),
+                    _s(row, "lot_id", 64),
+                    _s(row, "product_id", 128),
+                    _s(row, "operator_id", 256),
+                    _s(row, "recipe_name", 128),
+                    _s(row, "is_usable", 32),
+                    _s(row, "equipment_ip", 64),
+                    _s(row, "tc_master_ip", 64),
+                    _s(row, "total_display_sequence", 256),
+                    _s(row, "equipment_type", 64),
+                ))
+
+            cursor.executemany(sql, data)
+            conn.commit()
+            label = "realtime" if table_name == "eqp_current_status" else "hourly snapshot"
             print(f"[DB] {table_name}: inserted {cursor.rowcount} rows ({label}) at {now}.")
             cursor.close()
             conn.close()

@@ -887,7 +887,8 @@ class JobsPage(QWidget):
             "monthly_plan", "monthly_plan_snapshot",
             "process_result", "process_result_snapshot",
             "process_trackout", "process_trackout_snapshot",
-            "eqp_detailed_history", "eqp_detailed_history_snapshot"
+            "eqp_detailed_history", "eqp_detailed_history_snapshot",
+            "eqp_current_status", "eqp_current_status_snapshot"
         ]
         
         if not profile:
